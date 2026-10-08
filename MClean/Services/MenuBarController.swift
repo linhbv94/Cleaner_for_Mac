@@ -2,15 +2,23 @@ import AppKit
 import SwiftUI
 import Combine
 
-/// Captures SwiftUI's `openWindow` action so AppKit surfaces (the menu-bar
-/// popover, which lives outside the scene graph and has no working `openWindow`
-/// environment) can reopen the main window after it has been closed. The main
-/// window records the action on appear; the closure stays valid for the app's
-/// lifetime even once the window is gone.
+/// Captures SwiftUI's `openWindow` action so AppKit surfaces (such as the menu-bar
+/// popover) can reopen the main window after it has been closed.
 @MainActor
 final class WindowOpener {
     static let shared = WindowOpener()
     var open: ((String) -> Void)?
+    private init() {}
+}
+
+/// Global window manager tracking explicit window references and capture hooks
+/// for consistent lifecycle management and activation.
+@MainActor
+final class AppWindowManager {
+    static let shared = AppWindowManager()
+    weak var mainWindow: NSWindow?
+    weak var settingsWindow: NSWindow?
+    var openSettingsAction: (() -> Void)?
     private init() {}
 }
 
@@ -22,25 +30,84 @@ enum MenuBarQuickActionBuffer {
     static var smartScanRequested = false
 }
 
-/// AppKit-backed menu-bar system monitor. A SwiftUI `MenuBarExtra` was avoided
-/// here: a conditional `.window`-style `MenuBarExtra` fails to type-check, and
-/// an unconditional one stalls the XCTest host's run loop. An `NSStatusItem`
-/// driving an `NSPopover` (which hosts the existing SwiftUI `MenuBarMonitorView`)
-/// gives the same UI with full create/destroy control and no test-host impact.
+/// NSViewRepresentable helper that captures SwiftUI's `openWindow` action into
+/// `WindowOpener.shared` and firmly tags the main window with `vxclean.main`.
+struct MainWindowLifecycleCapture: NSViewRepresentable {
+    @Environment(\.openWindow) private var openWindow
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async { [weak view] in
+            guard let window = view?.window else { return }
+            window.identifier = MenuBarController.mainWindowIdentifier
+            AppWindowManager.shared.mainWindow = window
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        WindowOpener.shared.open = { id in openWindow(id: id) }
+        DispatchQueue.main.async { [weak nsView] in
+            guard let window = nsView?.window else { return }
+            window.identifier = MenuBarController.mainWindowIdentifier
+            AppWindowManager.shared.mainWindow = window
+        }
+    }
+}
+
+/// Backwards compatibility alias for WindowOpenerCapture
+typealias WindowOpenerCapture = MainWindowLifecycleCapture
+
+/// NSViewRepresentable helper that tags the Settings window with `vxclean.settings`.
+struct SettingsLifecycleCapture: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async { [weak view] in
+            guard let window = view?.window else { return }
+            window.identifier = MenuBarController.settingsWindowIdentifier
+            AppWindowManager.shared.settingsWindow = window
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async { [weak nsView] in
+            guard let window = nsView?.window else { return }
+            window.identifier = MenuBarController.settingsWindowIdentifier
+            AppWindowManager.shared.settingsWindow = window
+        }
+    }
+}
+
+/// AppKit-backed menu-bar system monitor. Uses NSStatusItem driving an NSPopover
+/// hosting MenuBarMonitorView for fine-grained lifecycle control and zero test-host impact.
 @MainActor
 final class MenuBarController: NSObject, NSPopoverDelegate {
+    static let mainWindowIdentifier = NSUserInterfaceItemIdentifier("vxclean.main")
+    static let settingsWindowIdentifier = NSUserInterfaceItemIdentifier("vxclean.settings")
+
     private let statusItem: NSStatusItem
     private let popover = NSPopover()
     private let monitor = SystemMonitor.shared
     private var cancellable: AnyCancellable?
+    private var detailSamplingActive = false
+
+    private func setDetailSamplingActive(_ active: Bool) {
+        guard detailSamplingActive != active else { return }
+        detailSamplingActive = active
+        if active {
+            monitor.startDetail()
+        } else {
+            monitor.stopDetail()
+        }
+    }
 
     override init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         super.init()
 
-        // Persist the user's show/hide choice and ensure the item is requested
-        // visible (it defaults hidden when restored from a prior autosave state).
-        statusItem.autosaveName = "MCleanSystemMonitor"
+        // Persist the user's show/hide choice under the VXClean namespace.
+        statusItem.autosaveName = "VXCleanSystemMonitor"
         statusItem.isVisible = true
 
         monitor.start()
@@ -55,7 +122,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             button.image = image
             button.imagePosition = .imageOnly
             button.imageScaling = .scaleProportionallyDown
-            button.setAccessibilityLabel("MClean")
+            button.setAccessibilityLabel("VXClean")
             button.target = self
             button.action = #selector(togglePopover)
             updateAccessibilityStatus()
@@ -72,7 +139,8 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             )
         )
         popover.contentViewController = host
-        popover.contentSize = host.sizeThatFits(in: NSSize(width: 304, height: 600))
+        // Set popover width to 380pt
+        popover.contentSize = host.sizeThatFits(in: NSSize(width: 380, height: 600))
         popover.delegate = self
 
         // Keep VoiceOver and the hover tooltip informative without changing
@@ -82,10 +150,9 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             .sink { [weak self] _ in self?.updateAccessibilityStatus() }
     }
 
-    /// Remove the status item and release the monitor observer. Called by
-    /// AppDelegate before dropping the controller so teardown runs on the main
-    /// actor (a `@MainActor` deinit cannot touch isolated state safely).
+    /// Remove the status item and release the monitor observer.
     func teardown() {
+        setDetailSamplingActive(false)
         cancellable?.cancel()
         cancellable = nil
         if popover.isShown { popover.performClose(nil) }
@@ -93,11 +160,21 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         monitor.stop()
     }
 
+    // MARK: - NSPopoverDelegate
+
+    func popoverWillShow(_ notification: Notification) {
+        setDetailSamplingActive(true)
+    }
+
+    func popoverDidClose(_ notification: Notification) {
+        setDetailSamplingActive(false)
+    }
+
     private func updateAccessibilityStatus() {
         guard let button = statusItem.button else { return }
         let percent = Int((monitor.cpuUsage * 100).rounded())
         let status = String(format: String(localized: "CPU %lld%%"), Int64(percent))
-        button.toolTip = "MClean · \(status)"
+        button.toolTip = "VXClean · \(status)"
         button.setAccessibilityValue(status)
     }
 
@@ -115,7 +192,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         MenuBarQuickActionBuffer.smartScanRequested = true
         closePopover()
         presentMainWindow()
-        NotificationCenter.default.post(name: .mCleanSmartScanRequested, object: nil)
+        NotificationCenter.default.post(name: .vxCleanSmartScanRequested, object: nil)
     }
 
     private func openMainWindow() {
@@ -123,12 +200,24 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         presentMainWindow()
     }
 
-    private func openSettings() {
+    func openSettings() {
         closePopover()
+        NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
-        // SwiftUI's OpenSettingsAction starts at macOS 14 while MClean still
-        // supports macOS 13. Route through the standard AppKit responder-chain
-        // action so the Settings scene works across the deployment range.
+
+        // Check if settings window already exists with our identifier
+        if let existing = NSApp.windows.first(where: { $0.identifier == Self.settingsWindowIdentifier }) {
+            if existing.isMiniaturized { existing.deminiaturize(nil) }
+            existing.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        if let open = AppWindowManager.shared.openSettingsAction {
+            open()
+            return
+        }
+
+        // Route through standard AppKit responder-chain action
         let opened = NSApp.sendAction(
             Selector(("showSettingsWindow:")), to: nil, from: nil
         )
@@ -141,14 +230,26 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         if popover.isShown { popover.performClose(nil) }
     }
 
-    private func presentMainWindow() {
-        NSApp.activate(ignoringOtherApps: true)
-        if let existing = NSApp.windows.first(where: {
-            $0.canBecomeMain && $0.styleMask.contains(.titled) && !($0 is NSPanel)
-        }) {
-            existing.makeKeyAndOrderFront(nil)
+    func presentMainWindow() {
+        NSApp.setActivationPolicy(.regular)
+
+        // Identify the main window specifically by its identifier, avoiding Settings
+        let targetWindow: NSWindow? = {
+            if let win = AppWindowManager.shared.mainWindow, win.identifier == Self.mainWindowIdentifier {
+                return win
+            }
+            return NSApp.windows.first { $0.identifier == Self.mainWindowIdentifier }
+        }()
+
+        if let window = targetWindow {
+            if window.isMiniaturized {
+                window.deminiaturize(nil)
+            }
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
         } else {
             WindowOpener.shared.open?("main")
+            NSApp.activate(ignoringOtherApps: true)
         }
     }
 }

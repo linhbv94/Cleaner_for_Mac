@@ -37,7 +37,7 @@ final class Logger: ObservableObject {
     private let osLogger: os.Logger
 
     private init() {
-        let subsystem = Bundle.main.bundleIdentifier ?? "com.maclife.mclean"
+        let subsystem = Bundle.main.bundleIdentifier ?? "local.vxclean.app"
         self.osLogger = os.Logger(subsystem: subsystem, category: "general")
     }
 

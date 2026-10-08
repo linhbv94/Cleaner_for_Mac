@@ -166,5 +166,5 @@ final class AppInfoFetcher {
         return size
     }
 
-    private static let sizeCacheKey = "MClean.AppSizeCache.v1"
+    private static let sizeCacheKey = "VXClean.AppSizeCache.v1"
 }

@@ -33,6 +33,11 @@ jobs:
     timeout-minutes: 60
 
     steps:
+      - name: Guard VXClean release configuration
+        run: |
+          echo "::error::VXClean release pipeline is guarded pending Developer ID and notarization configuration."
+          exit 1
+
       - name: Checkout
         uses: actions/checkout@v4
         with:

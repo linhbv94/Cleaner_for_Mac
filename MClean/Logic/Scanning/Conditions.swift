@@ -485,7 +485,7 @@ let skipReverse: [String] = [
     "ds_store", "caches", "crashreporter", "trash",
 
     // MClean itself (never flag our own files)
-    "mclean", "maclife",
+    "mclean", "maclife", "vxclean",
 
     // Common SDKs and Shared Components
     "amsdatamigratortool", "arfilecache", "assistant", "chromium",

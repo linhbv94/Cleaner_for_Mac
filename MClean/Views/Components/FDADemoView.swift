@@ -23,7 +23,7 @@ struct FDADemoView: View {
     private var rows: [DemoRow] {
         [
             DemoRow(name: "Finder", systemImage: "macwindow", granted: true),
-            DemoRow(name: "MClean", systemImage: "sparkles",
+            DemoRow(name: "VXClean", systemImage: "sparkles",
                     granted: frame == .toggleOn || frame == .granted || frame == .hold,
                     isMClean: true),
             DemoRow(name: "Terminal", systemImage: "terminal", granted: true),

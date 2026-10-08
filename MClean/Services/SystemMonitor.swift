@@ -1,53 +1,77 @@
 import Foundation
 import Darwin
+import Combine
+import IOKit.ps
 
 /// Lightweight live system telemetry for the menu-bar monitor (CPU / memory /
-/// disk). Polls on a timer only while a SwiftUI view is observing it; the menu
-/// bar's `MenuBarExtra` keeps a single shared instance alive, and `start()` /
-/// `stop()` gate the timer so the app does no background sampling when the
-/// monitor is disabled in Settings.
+/// disk / battery). Polls on a timer only while observing surfaces request it;
+/// the menu bar keeps a single shared instance alive, and `start()` / `stop()`
+/// gate the timer so the app does no background sampling when the monitor is disabled.
 ///
-/// All readings use public Mach / Foundation APIs (no sandbox-incompatible
-/// shelling out), so this stays valid under the app's hardened-runtime,
-/// notarized build.
+/// All readings use public Mach / Foundation / IOKit APIs (no sandbox-incompatible
+/// shelling out), remaining safe under hardened-runtime and notarization.
 @MainActor
 final class SystemMonitor: ObservableObject {
     static let shared = SystemMonitor()
 
+    // MARK: - CPU
     /// 0.0 - 1.0 fraction of total CPU time spent non-idle since the last sample.
     @Published private(set) var cpuUsage: Double = 0
+    /// History of up to 30 CPU samples (sampled every 2s => ~1 min window).
+    /// Sampled only when the popover is visible; reset upon opening.
+    @Published private(set) var cpuHistory: [Double] = []
+
+    // MARK: - Memory
+    /// Estimated memory in active use (sum of active, wired, and compressed pages).
     @Published private(set) var memoryUsed: Int64 = 0
     @Published private(set) var memoryTotal: Int64 = 0
-    @Published private(set) var diskUsed: Int64 = 0
-    @Published private(set) var diskTotal: Int64 = 0
+    /// Active pages from Mach VM (includes active file-backed and anonymous memory).
+    @Published private(set) var memoryActive: Int64 = 0
+    /// Wired pages (memory that cannot be paged out).
+    @Published private(set) var memoryWired: Int64 = 0
+    /// Compressed memory pages.
+    @Published private(set) var memoryCompressed: Int64 = 0
 
     var memoryFraction: Double {
         guard memoryTotal > 0 else { return 0 }
         return Double(memoryUsed) / Double(memoryTotal)
     }
 
+    // MARK: - Disk / Storage
+    @Published private(set) var diskUsed: Int64 = 0
+    @Published private(set) var diskTotal: Int64 = 0
+    /// Available capacity for important usage (as reported by APFS/macOS, may include purgeable space).
+    @Published private(set) var diskAvailable: Int64 = 0
+
     var diskFraction: Double {
         guard diskTotal > 0 else { return 0 }
         return Double(diskUsed) / Double(diskTotal)
     }
 
+    // MARK: - Battery
+    struct BatteryState: Equatable {
+        var hasBattery: Bool = false
+        var chargePercent: Int = 0
+        var isCharging: Bool = false
+        var isACPowered: Bool = false
+        var isCharged: Bool = false
+    }
+
+    @Published private(set) var batteryState: BatteryState = BatteryState()
+
+    // MARK: - Internal State
     private var timer: Timer?
-    /// Previous CPU tick counters, kept to turn the kernel's monotonically
-    /// increasing totals into a per-interval delta.
+    /// Previous CPU tick counters, kept to turn kernel totals into per-interval deltas.
     private var previousBusy: UInt64 = 0
     private var previousTotal: UInt64 = 0
-    /// Number of live observers; the timer runs only while > 0 so two views
-    /// (menu-bar label + dropdown) share one timer and the app idles cleanly.
+    /// Number of live status item observers.
     private var observerCount = 0
-    /// Observers that display memory/disk (the popover). While zero, each
-    /// tick samples only CPU — the menu-bar title needs nothing else, and
-    /// the per-tick VM stats + volume-capacity read were pure idle cost
-    /// while the popover was closed.
+    /// Observers that display memory/disk/battery/history (the popover).
     private var detailObserverCount = 0
 
     private init() {}
 
-    /// Begin (or keep) sampling. Refcounted so multiple observers share a timer.
+    /// Begin sampling. Refcounted so multiple observers share a timer.
     func start(interval: TimeInterval = 2.0) {
         observerCount += 1
         guard timer == nil else { return }
@@ -56,12 +80,11 @@ final class SystemMonitor: ObservableObject {
         let t = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.sample() }
         }
-        // .common so sampling continues while a menu/popover tracks the run loop.
         RunLoop.main.add(t, forMode: .common)
         timer = t
     }
 
-    /// Release one observer; the timer stops once the last one goes away.
+    /// Release one observer; timer stops once the last observer detaches.
     func stop() {
         observerCount = max(0, observerCount - 1)
         guard observerCount == 0 else { return }
@@ -69,14 +92,23 @@ final class SystemMonitor: ObservableObject {
         timer = nil
     }
 
-    /// The popover (which shows memory + disk) came on screen: sample those
-    /// immediately so it opens fresh, then keep sampling them each tick.
+    /// The popover came on screen: reset stale history, sample detailed metrics
+    /// immediately, and keep sampling them on each tick.
     func startDetail() {
+        let wasInactive = (detailObserverCount == 0)
         detailObserverCount += 1
+
+        if wasInactive {
+            // Fresh popover presentation: reset history to start clean ~1-minute window
+            cpuHistory = (cpuUsage > 0) ? [cpuUsage] : []
+        }
+
         sampleMemory()
         sampleDisk()
+        sampleBattery()
     }
 
+    /// The popover closed: cease memory/disk/battery sampling to eliminate idle cost.
     func stopDetail() {
         detailObserverCount = max(0, detailObserverCount - 1)
     }
@@ -84,11 +116,21 @@ final class SystemMonitor: ObservableObject {
     private func sample() {
         sampleCPU()
         guard detailObserverCount > 0 else { return }
+
+        // Update CPU history only when popover is visible
+        var history = cpuHistory
+        history.append(cpuUsage)
+        if history.count > 30 {
+            history.removeFirst(history.count - 30)
+        }
+        cpuHistory = history
+
         sampleMemory()
         sampleDisk()
+        sampleBattery()
     }
 
-    // MARK: - CPU
+    // MARK: - CPU Sampling
 
     private func sampleCPU() {
         var info = host_cpu_load_info()
@@ -110,7 +152,6 @@ final class SystemMonitor: ObservableObject {
         let total = busy &+ idle
 
         defer { previousBusy = busy; previousTotal = total }
-        // First sample has no prior baseline to diff against.
         guard previousTotal != 0, total > previousTotal else { return }
 
         let busyDelta = Double(busy &- previousBusy)
@@ -119,7 +160,7 @@ final class SystemMonitor: ObservableObject {
         cpuUsage = min(1, max(0, busyDelta / totalDelta))
     }
 
-    // MARK: - Memory
+    // MARK: - Memory Sampling
 
     private func sampleMemory() {
         var stats = vm_statistics64()
@@ -134,16 +175,17 @@ final class SystemMonitor: ObservableObject {
         guard result == KERN_SUCCESS else { return }
 
         let pageSize = Int64(vm_kernel_page_size)
-        // "App Memory" + wired + compressed mirrors what Activity Monitor counts
-        // as memory pressure; free + purgeable + most file-backed pages are not
-        // pressure, so they're excluded.
-        let used = (Int64(stats.active_count)
-            + Int64(stats.wire_count)
-            + Int64(stats.compressor_page_count)) * pageSize
-        memoryUsed = used
+        let active = Int64(stats.active_count) * pageSize
+        let wired = Int64(stats.wire_count) * pageSize
+        let compressed = Int64(stats.compressor_page_count) * pageSize
+
+        memoryActive = active
+        memoryWired = wired
+        memoryCompressed = compressed
+        memoryUsed = active + wired + compressed
     }
 
-    // MARK: - Disk
+    // MARK: - Disk Sampling
 
     private func sampleDisk() {
         let url = URL(fileURLWithPath: NSHomeDirectory())
@@ -156,7 +198,63 @@ final class SystemMonitor: ObservableObject {
             diskTotal = Int64(total)
         }
         if let available = values.volumeAvailableCapacityForImportantUsage {
-            diskUsed = max(0, diskTotal - available)
+            diskAvailable = Int64(available)
+            diskUsed = max(0, diskTotal - diskAvailable)
         }
+    }
+
+    // MARK: - Battery Sampling
+
+    private func sampleBattery() {
+        guard let snapshot = IOPSCopyPowerSourcesInfo()?.takeRetainedValue() else {
+            batteryState = BatteryState(hasBattery: false)
+            return
+        }
+        guard let sources = IOPSCopyPowerSourcesList(snapshot)?.takeRetainedValue() as? [CFTypeRef], !sources.isEmpty else {
+            batteryState = BatteryState(hasBattery: false)
+            return
+        }
+
+        for source in sources {
+            guard let desc = IOPSGetPowerSourceDescription(snapshot, source)?.takeUnretainedValue() as? [String: Any] else {
+                continue
+            }
+
+            // Only accept real internal batteries (filters out UPS, accessories, external devices)
+            guard let typeStr = desc[kIOPSTypeKey] as? String,
+                  typeStr == kIOPSInternalBatteryType else {
+                continue
+            }
+
+            let isPresent = desc[kIOPSIsPresentKey] as? Bool ?? false
+            guard isPresent else { continue }
+
+            guard let cur = desc[kIOPSCurrentCapacityKey] as? Int,
+                  let maxCap = desc[kIOPSMaxCapacityKey] as? Int,
+                  cur >= 0, maxCap > 0 else {
+                continue
+            }
+
+            guard let pState = desc[kIOPSPowerSourceStateKey] as? String,
+                  (pState == kIOPSACPowerValue || pState == kIOPSBatteryPowerValue) else {
+                continue
+            }
+            let isAC = (pState == kIOPSACPowerValue)
+            let charging = desc[kIOPSIsChargingKey] as? Bool ?? false
+            let isCharged = desc[kIOPSIsChargedKey] as? Bool ?? false
+
+            let rawPercent = Int((Double(cur) / Double(maxCap)) * 100)
+            let clampedPercent = min(100, max(0, rawPercent))
+
+            batteryState = BatteryState(
+                hasBattery: true,
+                chargePercent: clampedPercent,
+                isCharging: charging,
+                isACPowered: isAC,
+                isCharged: isCharged
+            )
+            return
+        }
+        batteryState = BatteryState(hasBattery: false)
     }
 }

@@ -1,3 +1,5 @@
+# Upstream Homebrew cask formula for MClean (preserved for historical provenance).
+# Not used for VXClean internal releases.
 cask "mclean" do
   version "1.0.4"
   sha256 "72c6389a5561914ed4b616a75f97b09b46e949de6c0ade346292bc6afa0aec37"

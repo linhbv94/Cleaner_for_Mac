@@ -36,7 +36,7 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
 final class ThemeManager: ObservableObject {
     static let shared = ThemeManager()
 
-    @AppStorage("MClean.Appearance") private var rawValue: String = AppearanceMode.system.rawValue
+    @AppStorage("VXClean.Appearance") private var rawValue: String = AppearanceMode.system.rawValue
 
     var appearance: AppearanceMode {
         get { AppearanceMode(rawValue: rawValue) ?? .system }

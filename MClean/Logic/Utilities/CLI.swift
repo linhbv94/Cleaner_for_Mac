@@ -143,9 +143,9 @@ struct CLI {
 
     private static func printUsage() {
         print("""
-        MClean CLI
+        VXClean CLI
 
-        Usage: mclean <command> [options]
+        Usage: VXClean <command> [options]
 
         Commands:
           scan                    Scan all categories
@@ -163,7 +163,7 @@ struct CLI {
 
     private static func printVersion() {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2.0.0"
-        print("MClean \(version)")
+        print("VXClean \(version)")
     }
 
     private static func printError(_ message: String) {

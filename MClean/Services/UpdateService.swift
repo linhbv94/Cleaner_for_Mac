@@ -20,24 +20,8 @@ final class UpdateService: ObservableObject {
     }
 
     func checkForUpdates() {
-        #if canImport(Sparkle)
-        DispatchQueue.main.async {
-            // Only start the Sparkle updater if an appcast/feed URL is configured.
-            if let _ = Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String {
-                self.updaterController?.startUpdater()
-                self.updaterController?.updater.checkForUpdates()
-            } else {
-                // Fallback: open Releases page when no feed is configured.
-                if let url = URL(string: "https://github.com/maclifevn/MClean/releases/latest") {
-                    NSWorkspace.shared.open(url)
-                }
-            }
-        }
-        #else
-        // Fallback: open Releases page
-        if let url = URL(string: "https://github.com/maclifevn/MClean/releases/latest") {
-            NSWorkspace.shared.open(url)
-        }
-        #endif
+        // Update checks are intentionally disabled for VXClean internal builds.
+        // No fake update URLs are used.
+        Logger.shared.log("Update checks are disabled for VXClean internal builds", level: .info)
     }
 }

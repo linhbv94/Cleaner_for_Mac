@@ -47,7 +47,7 @@ struct MainWindow: View {
             appState.checkFullDiskAccess()
             permission.refreshStatus()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .mCleanSmartScanRequested)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .vxCleanSmartScanRequested)) { _ in
             consumeMenuBarSmartScanRequest()
         }
         .onChange(of: appState.pendingExternalApp) { app in
@@ -161,7 +161,7 @@ struct MainWindow: View {
             Divider()
             healthFooter
         }
-        .navigationTitle("MClean")
+        .navigationTitle("VXClean")
     }
 
     private func sectionLabel(_ text: LocalizedStringKey) -> some View {
@@ -294,7 +294,7 @@ struct MainWindow: View {
                 CategoryDetailView(category: category)
             }
         case nil:
-            EmptyStateView("MClean", systemImage: "sparkles",
+            EmptyStateView("VXClean", systemImage: "sparkles",
                            description: "Select a category from the sidebar to get started.")
         }
     }

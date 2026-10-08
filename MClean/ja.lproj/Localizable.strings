@@ -1,4 +1,3 @@
-/* Sidebar (MainWindow) */
 "Overview" = "概要";
 "Applications" = "アプリケーション";
 "Cleanup" = "クリーンアップ";
@@ -11,23 +10,54 @@
 "Full Disk Access granted" = "フルディスクアクセスが許可されています";
 "Grant FDA in Settings" = "設定でフルディスクアクセスを許可";
 "Select a category from the sidebar to get started." = "サイドバーからカテゴリを選択して始めてください。";
-
-/* FDA toast + clean error alert (MainWindow) */
 "Couldn't clean everything" = "すべてを削除できませんでした";
 "Open System Settings" = "システム設定を開く";
 "OK" = "OK";
 "Full Disk Access required" = "フルディスクアクセスが必要です";
 "macOS blocks MClean from cleaning caches and uninstalling apps until you grant access." = "アクセスを許可するまで、macOSはMCleanによるキャッシュの削除やアプリのアンインストールをブロックします。";
 "Grant Access" = "アクセスを許可";
-
-/* Dashboard */
+"Grant Full Disk Access" = "フルディスクアクセスを付与";
+"%lld item(s) need Full Disk Access" = "%lld 件にフルディスクアクセスが必要です";
+"Uninstalling %@: %lld file(s) need Full Disk Access" = "%@ のアンインストール: %lld 個のファイルにフルディスクアクセスが必要です";
+"%lld item(s) need Full Disk Access to remove. Tap Grant Access to fix in one step." = "%lld 件の削除にはフルディスクアクセスが必要です。「アクセスを許可」をタップすると一手で解決します。";
+"Couldn't remove %@%@. They may be in use or protected by macOS." = "%@%@ を削除できませんでした。使用中か macOS によって保護されている可能性があります。";
+" and %lld more" = " 他 %lld 件";
+"Access granted. Retrying…" = "アクセスが許可されました。再試行中…";
+"1-tap setup. We'll detect the change automatically." = "ワンタップ設定。変更は自動的に検出されます。";
+"Open Settings & reveal MClean" = "設定を開き MClean を表示";
+"We'll open both windows side-by-side." = "両方のウインドウを並べて開きます。";
+"Turn on MClean" = "MClean をオンにする";
+"Toggle the row that appears." = "表示された行をオンに切り替えてください。";
+"Authenticate" = "認証";
+"Touch ID or password." = "Touch ID またはパスワード。";
+"We auto-retry — no need to come back." = "自動的に再試行します - 戻る必要はありません。";
+"Watching for permission change…" = "権限の変更を待機中…";
+"MClean not in the list?" = "MClean がリストに表示されない？";
+"Hide help" = "ヘルプを隠す";
+"Try this if MClean doesn't appear:" = "MClean が表示されない場合はこれを試してください:";
+"Reveal app" = "アプリを表示";
+"Drag MClean.app into the list" = "MClean.app をリストにドラッグ";
+"Reset + reprompt" = "リセットして再表示";
+"Clear stale TCC entry" = "古い TCC エントリを削除";
+"+ %lld more" = "+ %lld 件";
+"%lld blocked path(s)" = "%lld 件のブロックされたパス";
+"Access granted" = "アクセス許可済み";
+"Retrying the operation now." = "操作を再試行しています。";
+"Skip for now" = "今はスキップ";
+"I granted it — retry" = "許可したので再試行";
+"Low space" = "空き容量不足";
+"CLEANING" = "クリーニング中";
+"Quick Setup" = "クイックセットアップ";
+"1-tap setup. We'll auto-retry what failed." = "ワンタップ設定。失敗した処理は自動的に再試行します。";
+"Fix permission" = "権限を修正";
+"Dismiss" = "閉じる";
 "Storage" = "ストレージ";
 "Smart Scan" = "スマートスキャン";
 "free of %@" = "%@中の空き容量";
 "%lld%% used" = "%lld%% 使用中";
 "Used" = "使用中";
 "Junk" = "ジャンク";
-"Purgeable" = "削除可能";
+"Purgeable" = "消去可能";
 "USED" = "使用中";
 "SCANNING" = "スキャン中";
 "Free Space" = "空き容量";
@@ -57,13 +87,9 @@
 "freed" = "解放";
 "Done" = "完了";
 "%lld items" = "%lld 個";
-
-/* Common destructive dialog */
 "Clean" = "クリーンアップ";
 "Cancel" = "キャンセル";
 "This will permanently delete the selected files. This cannot be undone." = "選択したファイルが完全に削除されます。この操作は取り消せません。";
-
-/* Category Detail */
 "All Clean" = "すべてクリーン";
 "No junk files found in this category." = "このカテゴリにはジャンクファイルが見つかりませんでした。";
 "Not Scanned" = "未スキャン";
@@ -85,8 +111,6 @@
 "Reveal in Finder" = "Finderで表示";
 "Copy Path" = "パスをコピー";
 "Move to Trash" = "ゴミ箱に移動";
-
-/* Apps (AppListView) */
 "Search apps" = "アプリを検索";
 "Refresh" = "更新";
 "Installed Apps (%lld)" = "インストール済みアプリ (%lld)";
@@ -98,8 +122,6 @@
 "Size" = "サイズ";
 "Select an App" = "アプリを選択";
 "Select an app from the list to see all its related files across your system." = "リストからアプリを選択すると、システム全体の関連ファイルが表示されます。";
-
-/* App Files (AppFilesView) */
 "%lld files" = "%lld ファイル";
 "Scanning for related files..." = "関連ファイルをスキャン中...";
 "Checking %lld locations..." = "%lld 個の場所を確認中...";
@@ -111,8 +133,6 @@
 "Remove %@?" = "%@ を削除しますか?";
 "Remove" = "削除";
 "This will permanently delete this file. This action cannot be undone." = "このファイルが完全に削除されます。この操作は取り消せません。";
-
-/* Orphans */
 "Scanning for orphaned files..." = "孤立ファイルをスキャン中...";
 "No Orphaned Files" = "孤立ファイルはありません";
 "No leftover files from uninstalled apps were found." = "アンインストール済みアプリの残存ファイルは見つかりませんでした。";
@@ -120,8 +140,6 @@
 "Orphaned Files (%lld)" = "孤立ファイル (%lld)";
 "Remove Selected (%lld)" = "選択した項目を削除 (%lld)";
 "Some files could not be removed" = "一部のファイルを削除できませんでした";
-
-/* Onboarding */
 "Back" = "戻る";
 "Next" = "次へ";
 "Get Started" = "始める";
@@ -158,8 +176,6 @@
 "Documents" = "書類";
 "TCC Database" = "TCCデータベース";
 "Blocked" = "ブロック";
-
-/* Settings */
 "General" = "一般";
 "Cleaning" = "クリーニング";
 "Schedule" = "スケジュール";
@@ -202,8 +218,6 @@
 "GitHub Repository" = "GitHubリポジトリ";
 "Report an Issue" = "問題を報告";
 "MIT License" = "MITライセンス";
-
-/* Cleaning categories (CleaningCategory.rawValue) */
 "System Junk" = "システムジャンク";
 "User Cache" = "ユーザーキャッシュ";
 "AI Apps" = "AIアプリ";
@@ -215,8 +229,6 @@
 "Brew Cache" = "Brewキャッシュ";
 "Node Cache" = "Nodeキャッシュ";
 "Docker Cache" = "Dockerキャッシュ";
-
-/* Cleaning category descriptions */
 "Scan everything at once" = "すべてを一度にスキャン";
 "System caches, logs, and temporary files" = "システムキャッシュ、ログ、一時ファイル";
 "Application caches and browser data" = "アプリケーションキャッシュとブラウザデータ";
@@ -229,16 +241,10 @@
 "Homebrew download cache" = "Homebrewのダウンロードキャッシュ";
 "npm, yarn, and pnpm download caches" = "npm、yarn、pnpm のダウンロードキャッシュ";
 "Docker images, containers, and build cache" = "Dockerイメージ、コンテナ、ビルドキャッシュ";
-
-/* Node Cache subcategories */
 "npm cache" = "npmキャッシュ";
 "yarn classic cache" = "yarnクラシックキャッシュ";
 "pnpm content-addressable store" = "pnpmコンテンツアドレッサブルストア";
-
-/* Docker Cache helper */
 "Reclaimable (run `docker system prune -af`)" = "再利用可能 ( `docker system prune -af` を実行)";
-
-/* Schedule intervals (ScheduleInterval.rawValue) */
 "Every Hour" = "1時間ごと";
 "Every 3 Hours" = "3時間ごと";
 "Every 6 Hours" = "6時間ごと";
@@ -247,59 +253,12 @@
 "Weekly" = "毎週";
 "Every 2 Weeks" = "2週間ごと";
 "Monthly" = "毎月";
-
-/* Schedule status */
 "Never" = "なし";
 "Not scheduled" = "未スケジュール";
-
-/* Appearance modes (AppearanceMode.label) */
 "System" = "システム";
 "Light" = "ライト";
 "Dark" = "ダーク";
-
-/* Notifications */
 "Found %@ of junk files." = "%@ のジャンクファイルが見つかりました。";
-
-/* Permission Sheet */
-"Grant Full Disk Access" = "フルディスクアクセスを付与";
-"%lld item(s) need Full Disk Access" = "%lld 件にフルディスクアクセスが必要です";
-"Uninstalling %@: %lld file(s) need Full Disk Access" = "%@ のアンインストール: %lld 個のファイルにフルディスクアクセスが必要です";
-"%lld item(s) need Full Disk Access to remove. Tap Grant Access to fix in one step." = "%lld 件の削除にはフルディスクアクセスが必要です。「アクセスを許可」をタップすると一手で解決します。";
-"Couldn't remove %@%@. They may be in use or protected by macOS." = "%@%@ を削除できませんでした。使用中か macOS によって保護されている可能性があります。";
-" and %lld more" = " 他 %lld 件";
-"Access granted. Retrying…" = "アクセスが許可されました。再試行中…";
-"1-tap setup. We'll detect the change automatically." = "ワンタップ設定。変更は自動的に検出されます。";
-"Open Settings & reveal MClean" = "設定を開き MClean を表示";
-"We'll open both windows side-by-side." = "両方のウインドウを並べて開きます。";
-"Turn on MClean" = "MClean をオンにする";
-"Toggle the row that appears." = "表示された行をオンに切り替えてください。";
-"Authenticate" = "認証";
-"Touch ID or password." = "Touch ID またはパスワード。";
-"We auto-retry — no need to come back." = "自動的に再試行します - 戻る必要はありません。";
-"Watching for permission change…" = "権限の変更を待機中…";
-"MClean not in the list?" = "MClean がリストに表示されない？";
-"Hide help" = "ヘルプを隠す";
-"Try this if MClean doesn't appear:" = "MClean が表示されない場合はこれを試してください:";
-"Reveal app" = "アプリを表示";
-"Drag MClean.app into the list" = "MClean.app をリストにドラッグ";
-"Reset + reprompt" = "リセットして再表示";
-"Clear stale TCC entry" = "古い TCC エントリを削除";
-"+ %lld more" = "+ %lld 件";
-"%lld blocked path(s)" = "%lld 件のブロックされたパス";
-"Access granted" = "アクセス許可済み";
-"Retrying the operation now." = "操作を再試行しています。";
-"Skip for now" = "今はスキップ";
-"I granted it — retry" = "許可したので再試行";
-
-/* Dashboard polish */
-"Low space" = "空き容量不足";
-"CLEANING" = "クリーニング中";
-"Quick Setup" = "クイックセットアップ";
-"1-tap setup. We'll auto-retry what failed." = "ワンタップ設定。失敗した処理は自動的に再試行します。";
-"Fix permission" = "権限を修正";
-"Dismiss" = "閉じる";
-
-/* Onboarding v2 */
 "Reclaim your Mac" = "Mac を取り戻そう";
 "Apple sells you small disks. We help you keep them clean." = "Apple のストレージは小さい。だからこそ、きれいに保ちます。";
 "Free. Open source. MIT licensed." = "無料。オープンソース。MIT ライセンス。";
@@ -321,20 +280,13 @@
 "Skip" = "スキップ";
 "Start" = "開始";
 "Continue" = "続ける";
-
-/* Drag handle */
 "Drag to the Settings list" = "設定のリストにドラッグ";
 "Drag this icon into the Full Disk Access list in System Settings." = "このアイコンをシステム設定のフルディスクアクセスのリストにドラッグしてください。";
 "Tip: drag the icon on the left straight into the list." = "ヒント: 左のアイコンをそのままリストにドラッグできます。";
 "Or drag the icon on the left straight into Settings." = "または左のアイコンをそのまま設定にドラッグしてください。";
-
-/* Dashboard storage composition (v2.7.0) */
 "Storage composition" = "ストレージの内訳";
 "total" = "合計";
 "Free" = "空き";
-
-/* UI polish (v2.8.0): leftover groups + sound toggle */
-"Application" = "アプリケーション";
 "Caches" = "キャッシュ";
 "Application Support" = "アプリケーションサポート";
 "Preferences" = "環境設定";
@@ -344,25 +296,17 @@
 "Other Files" = "その他のファイル";
 "Sound" = "サウンド";
 "Play sound effects" = "効果音を再生";
-
-/* v2.8.1: purgeable honesty */
 "Managed by macOS" = "macOS が管理";
 "Reserved by macOS - freed automatically when space is needed" = "macOS が予約 - 空き容量が必要になると自動的に解放されます";
-
-/* v2.8.2: large-file folder exclusions (#121) */
 "Excluded Folders" = "除外するフォルダ";
 "Files inside these folders are skipped from the Large & Old Files scan (Downloads, Documents, Desktop)." = "これらのフォルダ内のファイルは「大きい/古いファイル」スキャン（ダウンロード、書類、デスクトップ）でスキップされます。";
 "Remove from exclusions" = "除外から削除";
 "Add Folder…" = "フォルダを追加…";
-
-/* v2.8.2: orphan ignore list (#114) */
 "Always Ignore" = "常に無視";
 "Ignore Selected (%lld)" = "選択した項目を無視 (%lld)";
 "Ignored orphans: %lld" = "無視した孤立ファイル: %lld";
 "Forget Ignored" = "無視リストを消去";
 "Ignored files won't appear in future orphan scans." = "無視したファイルは今後の孤立ファイルのスキャンに表示されません。";
-
-/* v2.8.3: menu-bar system monitor */
 "System Monitor" = "システムモニタ";
 "Show system monitor in menu bar" = "メニューバーにシステムモニタを表示";
 "Live CPU, memory, and disk meters in the menu bar. MClean keeps running in the background while this is on." = "CPU、メモリ、ディスクの使用状況をメニューバーにリアルタイム表示します。オンの間、MCleanはバックグラウンドで動作し続けます。";
@@ -374,8 +318,6 @@
 "Open MClean" = "MCleanを開く";
 "Settings…" = "設定…";
 "Quit MClean" = "MCleanを終了";
-
-/* Space Lens */
 "Space Lens" = "Space Lens";
 "See what's taking up space. Scan a folder to map its contents as bubbles you can explore and clean." = "何が容量を占めているかを確認。フォルダをスキャンして、中身をバブルとして表示し、探索して掃除できます。";
 "Scan Home Folder" = "ホームフォルダをスキャン";
@@ -390,16 +332,56 @@
 "Access denied" = "アクセスが拒否されました";
 "Other" = "その他";
 "Couldn't move some items to the Trash" = "一部の項目をゴミ箱に移動できませんでした";
-
-/* FDA relaunch detection */
 "Access granted — relaunch to apply" = "アクセスが許可されました — 再起動で適用されます";
 "macOS applies Full Disk Access when MClean starts again. Relaunch to finish — takes a second." = "macOS はフルディスクアクセスを MClean の再起動後に適用します。再起動して完了してください — 一瞬で終わります。";
 "Relaunch MClean" = "MClean を再起動";
-
-/* Donate (About) */
 "Buy me a coffee ☕" = "コーヒーをおごる ☕";
 "If MClean is useful to you, a small donation keeps it going. Thank you!" = "MClean が役に立ったら、小さな寄付が開発の支えになります。ありがとうございます!";
 "Scan with MoMo or your banking app (VietQR · Napas 247)" = "MoMo または銀行アプリでスキャン (VietQR · Napas 247)";
-
-/* Dashboard category row */
 "Select all in this category" = "このカテゴリをすべて選択";
+"VXClean" = "VXClean";
+"Open VXClean" = "VXClean を開く";
+"Quit VXClean" = "VXClean を終了";
+"Relaunch VXClean" = "VXClean を再起動";
+"Open Settings & reveal VXClean" = "設定を開いて VXClean を表示";
+"Turn on VXClean" = "VXClean をオンにする";
+"VXClean not in the list?" = "リストに VXClean が見つかりませんか？";
+"Try this if VXClean doesn't appear:" = "VXClean が表示されない場合は以下を試してください：";
+"Drag VXClean.app into the list" = "VXClean.app をリストにドラッグ";
+"macOS blocks VXClean from cleaning caches and uninstalling apps until you grant access." = "アクセス権が付与されるまで、macOS は VXClean によるキャッシュの消去やアプリのアンインストールを制限します。";
+"macOS applies Full Disk Access when VXClean starts again. Relaunch to finish — takes a second." = "VXClean を再起動すると、完全なディスクアクセスの変更が適用されます。再起動して完了してください。";
+"Live CPU, memory, and disk meters in the menu bar. VXClean keeps running in the background while this is on." = "メニューバーにリアルタイムの CPU、メモリ、ディスク使用量を表示します。有効時は VXClean がバックグラウンドで動作し続けます。";
+"Active Pages" = "アクティブページ";
+"Wired" = "確保中 (Wired)";
+"Compressed" = "圧縮";
+"Available" = "利用可能";
+"Battery" = "バッテリー";
+"Charging" = "充電中";
+"On Battery" = "バッテリー駆動";
+"Full" = "満充電";
+"Unknown" = "不明";
+"Live CPU History (1 min)" = "リアルタイム CPU 履歴 (1分)";
+"Check for Updates (Unavailable)" = "アップデートを確認 (利用不可)";
+"Based on MClean • Open Source macOS Cleaner & Manager" = "MClean ベース • オープンソース macOS クリーナー＆マネージャー";
+"Upstream Repository (MClean)" = "上流リポジトリ (MClean)";
+"Upstream Issue Tracker" = "上流イシュートラッカー";
+"MIT License — Based on MClean (Copyright 2026 MClean Contributors)" = "MIT ライセンス — MClean ベース (Copyright 2026 MClean Contributors)";
+
+/* VXClean Additional Localization & Battery Status */
+"Welcome to VXClean" = "VXCleanへようこそ";
+"VXClean needs Full Disk Access to uninstall apps, find leftover files, and clean protected caches." = "アプリのアンインストール、残存ファイルの検出、保護されたキャッシュのクリーンアップにはフルディスクアクセスが必要です。";
+"Find **VXClean** and turn the toggle on" = "**VXClean** を見つけてスイッチをオンにする";
+"VXClean isn't in the list — reveal it" = "VXCleanがリストにない — 表示する";
+"VXClean can now manage protected files." = "VXCleanは保護されたファイルを管理できるようになりました。";
+"Launch VXClean at login" = "ログイン時にVXCleanを起動";
+"Restart VXClean to apply the selected language." = "選択した言語を適用するにはVXCleanを再起動してください。";
+"VXClean can now reach the locations macOS protects by default." = "VXClean は macOS が標準で保護している場所にアクセスできるようになりました。";
+"If VXClean is useful to you, a small donation keeps it going. Thank you!" = "VXClean が役に立ったら、小さな寄付が開発の支えになります。ありがとうございます!";
+"Power Source: AC Adapter" = "電源: 電源アダプタ";
+"Power Source: Battery" = "電源: バッテリー";
+"Fully Charged" = "満充電";
+"Not Charging" = "充電停止中";
+"Discharging" = "放電中";
+"Wired Memory" = "固定メモリ";
+"CPU History: %lld samples" = "CPU履歴: %lld サンプル";
+"Updates" = "アップデート";

@@ -1,4 +1,3 @@
-/* Sidebar (MainWindow) */
 "Overview" = "Tổng quan";
 "Applications" = "Ứng dụng";
 "Cleanup" = "Dọn dẹp";
@@ -11,16 +10,12 @@
 "Full Disk Access granted" = "Đã cấp Toàn quyền Truy cập Đĩa";
 "Grant FDA in Settings" = "Cấp quyền trong Cài đặt";
 "Select a category from the sidebar to get started." = "Chọn một mục ở thanh bên để bắt đầu.";
-
-/* FDA toast + clean error alert (MainWindow) */
 "Couldn't clean everything" = "Không thể dọn hết";
 "Open System Settings" = "Mở Cài đặt Hệ thống";
 "OK" = "OK";
 "Full Disk Access required" = "Cần Toàn quyền Truy cập Đĩa";
 "macOS blocks MClean from cleaning caches and uninstalling apps until you grant access." = "macOS chặn MClean dọn bộ nhớ đệm và gỡ ứng dụng cho đến khi bạn cấp quyền.";
 "Grant Access" = "Cấp quyền";
-
-/* Permission Sheet */
 "Grant Full Disk Access" = "Cấp Toàn quyền Truy cập Đĩa";
 "%lld item(s) need Full Disk Access" = "%lld mục cần Toàn quyền Truy cập Đĩa";
 "Uninstalling %@: %lld file(s) need Full Disk Access" = "Đang gỡ %@: %lld tệp cần Toàn quyền Truy cập Đĩa";
@@ -50,17 +45,13 @@
 "Retrying the operation now." = "Đang thử lại thao tác.";
 "Skip for now" = "Bỏ qua bây giờ";
 "I granted it — retry" = "Tôi đã cấp — thử lại";
-
-/* Dashboard polish */
 "Low space" = "Sắp hết dung lượng";
 "CLEANING" = "ĐANG DỌN";
 "Quick Setup" = "Thiết lập nhanh";
 "1-tap setup. We'll auto-retry what failed." = "Thiết lập một chạm. Chúng tôi tự thử lại phần bị lỗi.";
 "Fix permission" = "Sửa quyền";
 "Dismiss" = "Bỏ qua";
-
-/* Dashboard */
-"Storage" = "Bộ nhớ";
+"Storage" = "Ổ đĩa";
 "Smart Scan" = "Quét thông minh";
 "free of %@" = "trống trên %@";
 "%lld%% used" = "đã dùng %lld%%";
@@ -96,13 +87,9 @@
 "freed" = "đã giải phóng";
 "Done" = "Xong";
 "%lld items" = "%lld mục";
-
-/* Common destructive dialog */
 "Clean" = "Dọn";
 "Cancel" = "Huỷ";
 "This will permanently delete the selected files. This cannot be undone." = "Thao tác này sẽ xoá vĩnh viễn các tệp đã chọn. Không thể hoàn tác.";
-
-/* Category Detail */
 "All Clean" = "Đã sạch";
 "No junk files found in this category." = "Không tìm thấy tệp rác nào trong hạng mục này.";
 "Not Scanned" = "Chưa quét";
@@ -124,8 +111,6 @@
 "Reveal in Finder" = "Hiện trong Finder";
 "Copy Path" = "Sao chép đường dẫn";
 "Move to Trash" = "Chuyển vào Thùng rác";
-
-/* Apps (AppListView) */
 "Search apps" = "Tìm ứng dụng";
 "Refresh" = "Làm mới";
 "Installed Apps (%lld)" = "Ứng dụng đã cài (%lld)";
@@ -137,8 +122,6 @@
 "Size" = "Kích thước";
 "Select an App" = "Chọn một ứng dụng";
 "Select an app from the list to see all its related files across your system." = "Chọn một ứng dụng trong danh sách để xem mọi tệp liên quan trên toàn hệ thống.";
-
-/* App Files (AppFilesView) */
 "%lld files" = "%lld tệp";
 "Scanning for related files..." = "Đang quét tệp liên quan...";
 "Checking %lld locations..." = "Đang kiểm tra %lld vị trí...";
@@ -150,8 +133,6 @@
 "Remove %@?" = "Xoá %@?";
 "Remove" = "Xoá";
 "This will permanently delete this file. This action cannot be undone." = "Thao tác này sẽ xoá vĩnh viễn tệp này. Không thể hoàn tác.";
-
-/* Orphans */
 "Scanning for orphaned files..." = "Đang quét tệp mồ côi...";
 "No Orphaned Files" = "Không có tệp mồ côi";
 "No leftover files from uninstalled apps were found." = "Không tìm thấy tệp sót lại từ các ứng dụng đã gỡ.";
@@ -159,8 +140,6 @@
 "Orphaned Files (%lld)" = "Tệp mồ côi (%lld)";
 "Remove Selected (%lld)" = "Xoá mục đã chọn (%lld)";
 "Some files could not be removed" = "Một số tệp không thể xoá";
-
-/* Onboarding */
 "Back" = "Quay lại";
 "Next" = "Tiếp";
 "Get Started" = "Bắt đầu";
@@ -197,8 +176,6 @@
 "Documents" = "Tài liệu";
 "TCC Database" = "Cơ sở dữ liệu TCC";
 "Blocked" = "Bị chặn";
-
-/* Settings */
 "General" = "Chung";
 "Cleaning" = "Dọn dẹp";
 "Schedule" = "Lịch trình";
@@ -241,8 +218,6 @@
 "GitHub Repository" = "Kho GitHub";
 "Report an Issue" = "Báo lỗi";
 "MIT License" = "Giấy phép MIT";
-
-/* Cleaning categories (CleaningCategory.rawValue) */
 "System Junk" = "Rác hệ thống";
 "User Cache" = "Cache người dùng";
 "AI Apps" = "Ứng dụng AI";
@@ -254,8 +229,6 @@
 "Brew Cache" = "Cache Brew";
 "Node Cache" = "Cache Node";
 "Docker Cache" = "Cache Docker";
-
-/* Cleaning category descriptions */
 "Scan everything at once" = "Quét mọi thứ cùng lúc";
 "System caches, logs, and temporary files" = "Cache hệ thống, nhật ký và tệp tạm";
 "Application caches and browser data" = "Cache ứng dụng và dữ liệu trình duyệt";
@@ -268,16 +241,10 @@
 "Homebrew download cache" = "Cache tải về của Homebrew";
 "npm, yarn, and pnpm download caches" = "Cache tải về của npm, yarn và pnpm";
 "Docker images, containers, and build cache" = "Image, container và cache build của Docker";
-
-/* Node Cache subcategories */
 "npm cache" = "cache npm";
 "yarn classic cache" = "cache yarn classic";
 "pnpm content-addressable store" = "kho content-addressable của pnpm";
-
-/* Docker Cache helper */
 "Reclaimable (run `docker system prune -af`)" = "Có thể thu hồi (chạy `docker system prune -af`)";
-
-/* Schedule intervals (ScheduleInterval.rawValue) */
 "Every Hour" = "Mỗi giờ";
 "Every 3 Hours" = "Mỗi 3 giờ";
 "Every 6 Hours" = "Mỗi 6 giờ";
@@ -286,20 +253,12 @@
 "Weekly" = "Hàng tuần";
 "Every 2 Weeks" = "Mỗi 2 tuần";
 "Monthly" = "Hàng tháng";
-
-/* Schedule status */
 "Never" = "Không bao giờ";
 "Not scheduled" = "Chưa lên lịch";
-
-/* Appearance modes (AppearanceMode.label) */
 "System" = "Hệ thống";
 "Light" = "Sáng";
 "Dark" = "Tối";
-
-/* Notifications */
 "Found %@ of junk files." = "Đã tìm thấy %@ tệp rác.";
-
-/* Onboarding v2 */
 "Reclaim your Mac" = "Lấy lại dung lượng Mac của bạn";
 "Apple sells you small disks. We help you keep them clean." = "Apple bán cho bạn ổ đĩa nhỏ. Chúng tôi giúp bạn giữ chúng gọn gàng.";
 "Free. Open source. MIT licensed." = "Miễn phí. Mã nguồn mở. Giấy phép MIT.";
@@ -321,20 +280,13 @@
 "Skip" = "Bỏ qua";
 "Start" = "Bắt đầu";
 "Continue" = "Tiếp tục";
-
-/* Drag handle */
 "Drag to the Settings list" = "Kéo vào danh sách trong Cài đặt";
 "Drag this icon into the Full Disk Access list in System Settings." = "Kéo biểu tượng này vào danh sách Toàn quyền Truy cập Đĩa trong Cài đặt Hệ thống.";
 "Tip: drag the icon on the left straight into the list." = "Mẹo: kéo thẳng biểu tượng bên trái vào danh sách.";
 "Or drag the icon on the left straight into Settings." = "Hoặc kéo thẳng biểu tượng bên trái vào Cài đặt.";
-
-/* Dashboard storage composition (v2.7.0) */
 "Storage composition" = "Thành phần bộ nhớ";
 "total" = "tổng";
 "Free" = "Trống";
-
-/* UI polish (v2.8.0): leftover groups + sound toggle */
-"Application" = "Ứng dụng";
 "Caches" = "Cache";
 "Application Support" = "Application Support";
 "Preferences" = "Tùy chọn";
@@ -344,25 +296,17 @@
 "Other Files" = "Tệp khác";
 "Sound" = "Âm thanh";
 "Play sound effects" = "Phát hiệu ứng âm thanh";
-
-/* v2.8.1: purgeable honesty */
 "Managed by macOS" = "Do macOS quản lý";
 "Reserved by macOS - freed automatically when space is needed" = "Được macOS dự trữ - tự giải phóng khi cần dung lượng";
-
-/* v2.8.2: large-file folder exclusions (#121) */
 "Excluded Folders" = "Thư mục loại trừ";
 "Files inside these folders are skipped from the Large & Old Files scan (Downloads, Documents, Desktop)." = "Các tệp trong những thư mục này được bỏ qua khi quét Tệp lớn & cũ (Tải về, Tài liệu, Màn hình nền).";
 "Remove from exclusions" = "Bỏ khỏi danh sách loại trừ";
 "Add Folder…" = "Thêm thư mục…";
-
-/* v2.8.2: orphan ignore list (#114) */
 "Always Ignore" = "Luôn bỏ qua";
 "Ignore Selected (%lld)" = "Bỏ qua mục đã chọn (%lld)";
 "Ignored orphans: %lld" = "Tệp mồ côi đã bỏ qua: %lld";
 "Forget Ignored" = "Quên danh sách bỏ qua";
 "Ignored files won't appear in future orphan scans." = "Các tệp đã bỏ qua sẽ không xuất hiện trong các lần quét tệp mồ côi sau.";
-
-/* v2.8.3: menu-bar system monitor */
 "System Monitor" = "Theo dõi hệ thống";
 "Show system monitor in menu bar" = "Hiện theo dõi hệ thống trên thanh menu";
 "Live CPU, memory, and disk meters in the menu bar. MClean keeps running in the background while this is on." = "Đồng hồ CPU, bộ nhớ và đĩa trực tiếp trên thanh menu. MClean tiếp tục chạy nền khi bật tính năng này.";
@@ -374,8 +318,6 @@
 "Open MClean" = "Mở MClean";
 "Settings…" = "Cài đặt…";
 "Quit MClean" = "Thoát MClean";
-
-/* Space Lens */
 "Space Lens" = "Space Lens";
 "See what's taking up space. Scan a folder to map its contents as bubbles you can explore and clean." = "Xem thứ gì đang chiếm dung lượng. Quét một thư mục để hiển thị nội dung dưới dạng bong bóng để bạn khám phá và dọn dẹp.";
 "Scan Home Folder" = "Quét thư mục Nhà";
@@ -390,16 +332,56 @@
 "Access denied" = "Bị từ chối truy cập";
 "Other" = "Khác";
 "Couldn't move some items to the Trash" = "Không thể chuyển một số mục vào Thùng rác";
-
-/* FDA relaunch detection */
 "Access granted — relaunch to apply" = "Đã cấp quyền — khởi động lại để áp dụng";
 "macOS applies Full Disk Access when MClean starts again. Relaunch to finish — takes a second." = "macOS áp dụng Toàn quyền Truy cập Đĩa khi MClean khởi động lại. Khởi động lại để hoàn tất — chỉ mất một giây.";
 "Relaunch MClean" = "Khởi động lại MClean";
-
-/* Donate (About) */
 "Buy me a coffee ☕" = "Mời tôi ly cà phê ☕";
 "If MClean is useful to you, a small donation keeps it going. Thank you!" = "Nếu MClean hữu ích với bạn, một khoản ủng hộ nhỏ giúp nó tiếp tục phát triển. Cảm ơn bạn!";
 "Scan with MoMo or your banking app (VietQR · Napas 247)" = "Quét bằng MoMo hoặc ứng dụng ngân hàng (VietQR · Napas 247)";
-
-/* Dashboard category row */
 "Select all in this category" = "Chọn tất cả trong hạng mục này";
+"VXClean" = "VXClean";
+"Open VXClean" = "Mở VXClean";
+"Quit VXClean" = "Thoát VXClean";
+"Relaunch VXClean" = "Khởi động lại VXClean";
+"Open Settings & reveal VXClean" = "Mở Cài đặt & hiện VXClean";
+"Turn on VXClean" = "Bật VXClean";
+"VXClean not in the list?" = "VXClean không có trong danh sách?";
+"Try this if VXClean doesn't appear:" = "Thử cách này nếu VXClean không xuất hiện:";
+"Drag VXClean.app into the list" = "Kéo VXClean.app vào danh sách";
+"macOS blocks VXClean from cleaning caches and uninstalling apps until you grant access." = "macOS chặn VXClean dọn bộ nhớ đệm và gỡ ứng dụng cho đến khi bạn cấp quyền.";
+"macOS applies Full Disk Access when VXClean starts again. Relaunch to finish — takes a second." = "macOS áp dụng Toàn quyền Truy cập Đĩa khi VXClean khởi động lại. Khởi động lại để hoàn tất — chỉ mất một giây.";
+"Live CPU, memory, and disk meters in the menu bar. VXClean keeps running in the background while this is on." = "Đo CPU, bộ nhớ và ổ đĩa trực tiếp trên thanh menu. VXClean tiếp tục chạy nền khi tính năng này bật.";
+"Active Pages" = "Trang hoạt động";
+"Wired" = "Cố định (Wired)";
+"Compressed" = "Nén";
+"Available" = "Khả dụng";
+"Battery" = "Pin";
+"Charging" = "Đang sạc";
+"On Battery" = "Dùng pin";
+"Full" = "Đầy";
+"Unknown" = "Không rõ";
+"Live CPU History (1 min)" = "Lịch sử CPU trực tiếp (1 phút)";
+"Check for Updates (Unavailable)" = "Kiểm tra cập nhật (Chưa hỗ trợ)";
+"Based on MClean • Open Source macOS Cleaner & Manager" = "Dựa trên MClean • Trình dọn dẹp & Quản lý macOS mã nguồn mở";
+"Upstream Repository (MClean)" = "Kho mã nguồn gốc (MClean)";
+"Upstream Issue Tracker" = "Theo dõi lỗi gốc (MClean Issues)";
+"MIT License — Based on MClean (Copyright 2026 MClean Contributors)" = "Giấy phép MIT — Dựa trên MClean (Bản quyền 2026 MClean Contributors)";
+
+/* VXClean Additional Localization & Battery Status */
+"Welcome to VXClean" = "Chào mừng đến VXClean";
+"VXClean needs Full Disk Access to uninstall apps, find leftover files, and clean protected caches." = "VXClean cần Toàn quyền Truy cập Đĩa để gỡ ứng dụng, tìm tệp sót lại và dọn các cache được bảo vệ.";
+"Find **VXClean** and turn the toggle on" = "Tìm **VXClean** và bật công tắc";
+"VXClean isn't in the list — reveal it" = "VXClean không có trong danh sách — hiện nó ra";
+"VXClean can now manage protected files." = "VXClean giờ có thể quản lý các tệp được bảo vệ.";
+"Launch VXClean at login" = "Mở VXClean khi đăng nhập";
+"Restart VXClean to apply the selected language." = "Khởi động lại VXClean để áp dụng ngôn ngữ đã chọn.";
+"VXClean can now reach the locations macOS protects by default." = "VXClean giờ có thể truy cập các vị trí mà macOS bảo vệ mặc định.";
+"If VXClean is useful to you, a small donation keeps it going. Thank you!" = "Nếu VXClean hữu ích với bạn, một khoản ủng hộ nhỏ giúp nó tiếp tục phát triển. Cảm ơn bạn!";
+"Power Source: AC Adapter" = "Nguồn điện: Bộ sạc AC";
+"Power Source: Battery" = "Nguồn điện: Pin";
+"Fully Charged" = "Đã sạc đầy";
+"Not Charging" = "Không sạc";
+"Discharging" = "Đang dùng pin";
+"Wired Memory" = "Bộ nhớ cố định";
+"CPU History: %lld samples" = "Lịch sử CPU: %lld mẫu";
+"Updates" = "Cập nhật";

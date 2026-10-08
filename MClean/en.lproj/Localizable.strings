@@ -1,4 +1,3 @@
-/* Sidebar (MainWindow) */
 "Overview" = "Overview";
 "Applications" = "Applications";
 "Cleanup" = "Cleanup";
@@ -11,16 +10,12 @@
 "Full Disk Access granted" = "Full Disk Access granted";
 "Grant FDA in Settings" = "Grant FDA in Settings";
 "Select a category from the sidebar to get started." = "Select a category from the sidebar to get started.";
-
-/* FDA toast + clean error alert (MainWindow) */
 "Couldn't clean everything" = "Couldn't clean everything";
 "Open System Settings" = "Open System Settings";
 "OK" = "OK";
 "Full Disk Access required" = "Full Disk Access required";
 "macOS blocks MClean from cleaning caches and uninstalling apps until you grant access." = "macOS blocks MClean from cleaning caches and uninstalling apps until you grant access.";
 "Grant Access" = "Grant Access";
-
-/* Permission Sheet */
 "Grant Full Disk Access" = "Grant Full Disk Access";
 "%lld item(s) need Full Disk Access" = "%lld item(s) need Full Disk Access";
 "Uninstalling %@: %lld file(s) need Full Disk Access" = "Uninstalling %@: %lld file(s) need Full Disk Access";
@@ -50,16 +45,12 @@
 "Retrying the operation now." = "Retrying the operation now.";
 "Skip for now" = "Skip for now";
 "I granted it — retry" = "I granted it — retry";
-
-/* Dashboard polish */
 "Low space" = "Low space";
 "CLEANING" = "CLEANING";
 "Quick Setup" = "Quick Setup";
 "1-tap setup. We'll auto-retry what failed." = "1-tap setup. We'll auto-retry what failed.";
 "Fix permission" = "Fix permission";
 "Dismiss" = "Dismiss";
-
-/* Dashboard */
 "Storage" = "Storage";
 "Smart Scan" = "Smart Scan";
 "free of %@" = "free of %@";
@@ -96,13 +87,9 @@
 "freed" = "freed";
 "Done" = "Done";
 "%lld items" = "%lld items";
-
-/* Common destructive dialog */
 "Clean" = "Clean";
 "Cancel" = "Cancel";
 "This will permanently delete the selected files. This cannot be undone." = "This will permanently delete the selected files. This cannot be undone.";
-
-/* Category Detail */
 "All Clean" = "All Clean";
 "No junk files found in this category." = "No junk files found in this category.";
 "Not Scanned" = "Not Scanned";
@@ -124,8 +111,6 @@
 "Reveal in Finder" = "Reveal in Finder";
 "Copy Path" = "Copy Path";
 "Move to Trash" = "Move to Trash";
-
-/* Apps (AppListView) */
 "Search apps" = "Search apps";
 "Refresh" = "Refresh";
 "Installed Apps (%lld)" = "Installed Apps (%lld)";
@@ -137,8 +122,6 @@
 "Size" = "Size";
 "Select an App" = "Select an App";
 "Select an app from the list to see all its related files across your system." = "Select an app from the list to see all its related files across your system.";
-
-/* App Files (AppFilesView) */
 "%lld files" = "%lld files";
 "Scanning for related files..." = "Scanning for related files...";
 "Checking %lld locations..." = "Checking %lld locations...";
@@ -150,8 +133,6 @@
 "Remove %@?" = "Remove %@?";
 "Remove" = "Remove";
 "This will permanently delete this file. This action cannot be undone." = "This will permanently delete this file. This action cannot be undone.";
-
-/* Orphans */
 "Scanning for orphaned files..." = "Scanning for orphaned files...";
 "No Orphaned Files" = "No Orphaned Files";
 "No leftover files from uninstalled apps were found." = "No leftover files from uninstalled apps were found.";
@@ -159,8 +140,6 @@
 "Orphaned Files (%lld)" = "Orphaned Files (%lld)";
 "Remove Selected (%lld)" = "Remove Selected (%lld)";
 "Some files could not be removed" = "Some files could not be removed";
-
-/* Onboarding */
 "Back" = "Back";
 "Next" = "Next";
 "Get Started" = "Get Started";
@@ -197,8 +176,6 @@
 "Documents" = "Documents";
 "TCC Database" = "TCC Database";
 "Blocked" = "Blocked";
-
-/* Settings */
 "General" = "General";
 "Cleaning" = "Cleaning";
 "Schedule" = "Schedule";
@@ -241,8 +218,6 @@
 "GitHub Repository" = "GitHub Repository";
 "Report an Issue" = "Report an Issue";
 "MIT License" = "MIT License";
-
-/* Cleaning categories (CleaningCategory.rawValue) */
 "System Junk" = "System Junk";
 "User Cache" = "User Cache";
 "AI Apps" = "AI Apps";
@@ -254,8 +229,6 @@
 "Brew Cache" = "Brew Cache";
 "Node Cache" = "Node Cache";
 "Docker Cache" = "Docker Cache";
-
-/* Cleaning category descriptions */
 "Scan everything at once" = "Scan everything at once";
 "System caches, logs, and temporary files" = "System caches, logs, and temporary files";
 "Application caches and browser data" = "Application caches and browser data";
@@ -268,16 +241,10 @@
 "Homebrew download cache" = "Homebrew download cache";
 "npm, yarn, and pnpm download caches" = "npm, yarn, and pnpm download caches";
 "Docker images, containers, and build cache" = "Docker images, containers, and build cache";
-
-/* Node Cache subcategories */
 "npm cache" = "npm cache";
 "yarn classic cache" = "yarn classic cache";
 "pnpm content-addressable store" = "pnpm content-addressable store";
-
-/* Docker Cache helper */
 "Reclaimable (run `docker system prune -af`)" = "Reclaimable (run `docker system prune -af`)";
-
-/* Schedule intervals (ScheduleInterval.rawValue) */
 "Every Hour" = "Every Hour";
 "Every 3 Hours" = "Every 3 Hours";
 "Every 6 Hours" = "Every 6 Hours";
@@ -286,20 +253,12 @@
 "Weekly" = "Weekly";
 "Every 2 Weeks" = "Every 2 Weeks";
 "Monthly" = "Monthly";
-
-/* Schedule status */
 "Never" = "Never";
 "Not scheduled" = "Not scheduled";
-
-/* Appearance modes (AppearanceMode.label) */
 "System" = "System";
 "Light" = "Light";
 "Dark" = "Dark";
-
-/* Notifications */
 "Found %@ of junk files." = "Found %@ of junk files.";
-
-/* Onboarding v2 */
 "Reclaim your Mac" = "Reclaim your Mac";
 "Apple sells you small disks. We help you keep them clean." = "Apple sells you small disks. We help you keep them clean.";
 "Free. Open source. MIT licensed." = "Free. Open source. MIT licensed.";
@@ -321,20 +280,13 @@
 "Skip" = "Skip";
 "Start" = "Start";
 "Continue" = "Continue";
-
-/* Drag handle */
 "Drag to the Settings list" = "Drag to the Settings list";
 "Drag this icon into the Full Disk Access list in System Settings." = "Drag this icon into the Full Disk Access list in System Settings.";
 "Tip: drag the icon on the left straight into the list." = "Tip: drag the icon on the left straight into the list.";
 "Or drag the icon on the left straight into Settings." = "Or drag the icon on the left straight into Settings.";
-
-/* Dashboard storage composition (v2.7.0) */
 "Storage composition" = "Storage composition";
 "total" = "total";
 "Free" = "Free";
-
-/* UI polish (v2.8.0): leftover groups + sound toggle */
-"Application" = "Application";
 "Caches" = "Caches";
 "Application Support" = "Application Support";
 "Preferences" = "Preferences";
@@ -344,25 +296,17 @@
 "Other Files" = "Other Files";
 "Sound" = "Sound";
 "Play sound effects" = "Play sound effects";
-
-/* v2.8.1: purgeable honesty */
 "Managed by macOS" = "Managed by macOS";
 "Reserved by macOS - freed automatically when space is needed" = "Reserved by macOS - freed automatically when space is needed";
-
-/* v2.8.2: large-file folder exclusions (#121) */
 "Excluded Folders" = "Excluded Folders";
 "Files inside these folders are skipped from the Large & Old Files scan (Downloads, Documents, Desktop)." = "Files inside these folders are skipped from the Large & Old Files scan (Downloads, Documents, Desktop).";
 "Remove from exclusions" = "Remove from exclusions";
 "Add Folder…" = "Add Folder…";
-
-/* v2.8.2: orphan ignore list (#114) */
 "Always Ignore" = "Always Ignore";
 "Ignore Selected (%lld)" = "Ignore Selected (%lld)";
 "Ignored orphans: %lld" = "Ignored orphans: %lld";
 "Forget Ignored" = "Forget Ignored";
 "Ignored files won't appear in future orphan scans." = "Ignored files won't appear in future orphan scans.";
-
-/* v2.8.3: menu-bar system monitor */
 "System Monitor" = "System Monitor";
 "Show system monitor in menu bar" = "Show system monitor in menu bar";
 "Live CPU, memory, and disk meters in the menu bar. MClean keeps running in the background while this is on." = "Live CPU, memory, and disk meters in the menu bar. MClean keeps running in the background while this is on.";
@@ -374,8 +318,6 @@
 "Open MClean" = "Open MClean";
 "Settings…" = "Settings…";
 "Quit MClean" = "Quit MClean";
-
-/* Space Lens */
 "Space Lens" = "Space Lens";
 "See what's taking up space. Scan a folder to map its contents as bubbles you can explore and clean." = "See what's taking up space. Scan a folder to map its contents as bubbles you can explore and clean.";
 "Scan Home Folder" = "Scan Home Folder";
@@ -390,16 +332,56 @@
 "Access denied" = "Access denied";
 "Other" = "Other";
 "Couldn't move some items to the Trash" = "Couldn't move some items to the Trash";
-
-/* FDA relaunch detection */
 "Access granted — relaunch to apply" = "Access granted — relaunch to apply";
 "macOS applies Full Disk Access when MClean starts again. Relaunch to finish — takes a second." = "macOS applies Full Disk Access when MClean starts again. Relaunch to finish — takes a second.";
 "Relaunch MClean" = "Relaunch MClean";
-
-/* Donate (About) */
 "Buy me a coffee ☕" = "Buy me a coffee ☕";
 "If MClean is useful to you, a small donation keeps it going. Thank you!" = "If MClean is useful to you, a small donation keeps it going. Thank you!";
 "Scan with MoMo or your banking app (VietQR · Napas 247)" = "Scan with MoMo or your banking app (VietQR · Napas 247)";
-
-/* Dashboard category row */
 "Select all in this category" = "Select all in this category";
+"VXClean" = "VXClean";
+"Open VXClean" = "Open VXClean";
+"Quit VXClean" = "Quit VXClean";
+"Relaunch VXClean" = "Relaunch VXClean";
+"Open Settings & reveal VXClean" = "Open Settings & reveal VXClean";
+"Turn on VXClean" = "Turn on VXClean";
+"VXClean not in the list?" = "VXClean not in the list?";
+"Try this if VXClean doesn't appear:" = "Try this if VXClean doesn't appear:";
+"Drag VXClean.app into the list" = "Drag VXClean.app into the list";
+"macOS blocks VXClean from cleaning caches and uninstalling apps until you grant access." = "macOS blocks VXClean from cleaning caches and uninstalling apps until you grant access.";
+"macOS applies Full Disk Access when VXClean starts again. Relaunch to finish — takes a second." = "macOS applies Full Disk Access when VXClean starts again. Relaunch to finish — takes a second.";
+"Live CPU, memory, and disk meters in the menu bar. VXClean keeps running in the background while this is on." = "Live CPU, memory, and disk meters in the menu bar. VXClean keeps running in the background while this is on.";
+"Active Pages" = "Active Pages";
+"Wired" = "Wired";
+"Compressed" = "Compressed";
+"Available" = "Available";
+"Battery" = "Battery";
+"Charging" = "Charging";
+"On Battery" = "On Battery";
+"Full" = "Full";
+"Unknown" = "Unknown";
+"Live CPU History (1 min)" = "Live CPU History (1 min)";
+"Check for Updates (Unavailable)" = "Check for Updates (Unavailable)";
+"Based on MClean • Open Source macOS Cleaner & Manager" = "Based on MClean • Open Source macOS Cleaner & Manager";
+"Upstream Repository (MClean)" = "Upstream Repository (MClean)";
+"Upstream Issue Tracker" = "Upstream Issue Tracker";
+"MIT License — Based on MClean (Copyright 2026 MClean Contributors)" = "MIT License — Based on MClean (Copyright 2026 MClean Contributors)";
+
+/* VXClean Additional Localization & Battery Status */
+"Welcome to VXClean" = "Welcome to VXClean";
+"VXClean needs Full Disk Access to uninstall apps, find leftover files, and clean protected caches." = "VXClean needs Full Disk Access to uninstall apps, find leftover files, and clean protected caches.";
+"Find **VXClean** and turn the toggle on" = "Find **VXClean** and turn the toggle on";
+"VXClean isn't in the list — reveal it" = "VXClean isn't in the list — reveal it";
+"VXClean can now manage protected files." = "VXClean can now manage protected files.";
+"Launch VXClean at login" = "Launch VXClean at login";
+"Restart VXClean to apply the selected language." = "Restart VXClean to apply the selected language.";
+"VXClean can now reach the locations macOS protects by default." = "VXClean can now reach the locations macOS protects by default.";
+"If VXClean is useful to you, a small donation keeps it going. Thank you!" = "If VXClean is useful to you, a small donation keeps it going. Thank you!";
+"Power Source: AC Adapter" = "Power Source: AC Adapter";
+"Power Source: Battery" = "Power Source: Battery";
+"Fully Charged" = "Fully Charged";
+"Not Charging" = "Not Charging";
+"Discharging" = "Discharging";
+"Wired Memory" = "Wired Memory";
+"CPU History: %lld samples" = "CPU History: %lld samples";
+"Updates" = "Updates";

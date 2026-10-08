@@ -160,7 +160,7 @@ final class FullDiskAccessManager {
     /// Returns true if the reset command exited cleanly.
     @discardableResult
     func resetFullDiskAccess() -> Bool {
-        let bundleID = Bundle.main.bundleIdentifier ?? "com.maclife.mclean"
+        let bundleID = Bundle.main.bundleIdentifier ?? "local.vxclean.app"
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
         process.arguments = ["reset", "SystemPolicyAllFiles", bundleID]

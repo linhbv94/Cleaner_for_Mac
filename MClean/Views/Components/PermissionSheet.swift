@@ -118,7 +118,7 @@ struct PermissionSheet: View {
             SuccessMedal(size: 72)
             Text("Access granted")
                 .font(.system(size: 15, weight: .bold))
-            Text("macOS applies Full Disk Access when MClean starts again. Relaunch to finish — takes a second.")
+            Text("macOS applies Full Disk Access when VXClean starts again. Relaunch to finish — takes a second.")
                 .font(.system(size: 11.5))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -144,7 +144,7 @@ struct PermissionSheet: View {
                         Haptics.tap()
                         coordinator.openSettingsAndReveal()
                     } label: {
-                        Label("Open Settings & reveal MClean", systemImage: "gear")
+                        Label("Open Settings & reveal VXClean", systemImage: "gear")
                             .font(.system(size: 13, weight: .semibold))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 4)
@@ -163,7 +163,7 @@ struct PermissionSheet: View {
 
             // Step-by-step strip
             HStack(spacing: 0) {
-                stepCell(number: 1, title: "Turn on MClean",
+                stepCell(number: 1, title: "Turn on VXClean",
                          caption: "Toggle the row that appears.")
                 stepDivider
                 stepCell(number: 2, title: "Authenticate",
@@ -194,7 +194,7 @@ struct PermissionSheet: View {
                     .font(.system(size: 11.5))
                     .foregroundStyle(.secondary)
                 Spacer()
-                Button(showAdvanced ? "Hide help" : "MClean not in the list?") {
+                Button(showAdvanced ? "Hide help" : "VXClean not in the list?") {
                     withAnimation(.easeInOut(duration: 0.25)) { showAdvanced.toggle() }
                 }
                 .buttonStyle(.link)
@@ -217,7 +217,7 @@ struct PermissionSheet: View {
 
     private var advancedPanel: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Try this if MClean doesn't appear:")
+            Text("Try this if VXClean doesn't appear:")
                 .font(.system(size: 11.5, weight: .semibold))
                 .foregroundStyle(.secondary)
 
@@ -225,7 +225,7 @@ struct PermissionSheet: View {
                 advancedButton(
                     icon: "folder.badge.gearshape",
                     title: "Reveal app",
-                    subtitle: "Drag MClean.app into the list"
+                    subtitle: "Drag VXClean.app into the list"
                 ) {
                     FullDiskAccessManager.shared.revealAppInFinder()
                 }
@@ -375,7 +375,7 @@ struct PermissionSheet: View {
                 Button {
                     coordinator.relaunch()
                 } label: {
-                    Label("Relaunch MClean", systemImage: "arrow.clockwise")
+                    Label("Relaunch VXClean", systemImage: "arrow.clockwise")
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.regular)

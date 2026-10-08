@@ -100,7 +100,7 @@
 		28181F034530331A550C6A3D /* SchedulerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchedulerService.swift; sourceTree = "<group>"; };
 		2A8DE5D45BA19E2670B57DC5 /* CleaningEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleaningEngine.swift; sourceTree = "<group>"; };
 		2D3F9FEDC493A8E49E910F67 /* AppBundleDragHandle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppBundleDragHandle.swift; sourceTree = "<group>"; };
-		311078221878708524283765 /* MClean.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MClean.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		311078221878708524283765 /* VXClean.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VXClean.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		3667D46D8E2004EB4D73835A /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		3A8D39C3C250F26302EC45AB /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		3D4FD34378988D430A582ED0 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
@@ -198,7 +198,7 @@
 		4562CA9E5625FA4EEEFECB6D /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				311078221878708524283765 /* MClean.app */,
+				311078221878708524283765 /* VXClean.app */,
 				607B9A8C7B34D6A7DCF4FFE2 /* MCleanTests.xctest */,
 			);
 			name = Products;
@@ -374,7 +374,7 @@
 			packageProductDependencies = (
 			);
 			productName = MClean;
-			productReference = 311078221878708524283765 /* MClean.app */;
+			productReference = 311078221878708524283765 /* VXClean.app */;
 			productType = "com.apple.product-type.application";
 		};
 		FBA8B0DE95746207A043B802 /* MCleanTests */ = {
@@ -583,13 +583,12 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_ENTITLEMENTS = MClean/MClean.entitlements;
-				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 5;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = CF5PGH3KGK;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -614,7 +613,7 @@
 				MTL_FAST_MATH = YES;
 				DEAD_CODE_STRIPPING = YES;
 				ONLY_ACTIVE_ARCH = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = com.maclife.mclean;
+				PRODUCT_BUNDLE_IDENTIFIER = local.vxclean.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
@@ -630,7 +629,8 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				INFOPLIST_FILE = MClean/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
-				PRODUCT_NAME = MClean;
+				PRODUCT_MODULE_NAME = MClean;
+				PRODUCT_NAME = VXClean;
 				SDKROOT = macosx;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 			};
@@ -647,7 +647,7 @@
 					"@loader_path/../Frameworks",
 				);
 				SDKROOT = macosx;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MClean.app/Contents/MacOS/MClean";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/VXClean.app/Contents/MacOS/VXClean";
 			};
 			name = Debug;
 		};
@@ -662,7 +662,7 @@
 					"@loader_path/../Frameworks",
 				);
 				SDKROOT = macosx;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MClean.app/Contents/MacOS/MClean";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/VXClean.app/Contents/MacOS/VXClean";
 			};
 			name = Release;
 		};
@@ -702,14 +702,13 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_ENTITLEMENTS = MClean/MClean.entitlements;
-				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 5;
 				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = CF5PGH3KGK;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -729,7 +728,7 @@
 				ONLY_ACTIVE_ARCH = NO;
 				STRIP_INSTALLED_PRODUCT = YES;
 				STRIP_STYLE = "non-global";
-				PRODUCT_BUNDLE_IDENTIFIER = com.maclife.mclean;
+				PRODUCT_BUNDLE_IDENTIFIER = local.vxclean.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SWIFT_COMPILATION_MODE = wholemodule;
@@ -745,7 +744,8 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				INFOPLIST_FILE = MClean/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
-				PRODUCT_NAME = MClean;
+				PRODUCT_MODULE_NAME = MClean;
+				PRODUCT_NAME = VXClean;
 				SDKROOT = macosx;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 			};

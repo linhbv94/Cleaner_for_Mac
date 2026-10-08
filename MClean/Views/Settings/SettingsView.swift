@@ -49,7 +49,7 @@ struct GeneralSettingsView: View {
     var body: some View {
         Form {
             Section("Startup") {
-                Toggle("Launch MClean at login", isOn: launchAtLoginBinding)
+                Toggle("Launch VXClean at login", isOn: launchAtLoginBinding)
             }
 
             Section("App Scanning") {
@@ -75,7 +75,7 @@ struct GeneralSettingsView: View {
                 }
 
                 if languageNeedsRelaunch {
-                    Text("Restart MClean to apply the selected language.")
+                    Text("Restart VXClean to apply the selected language.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .transition(.opacity.combined(with: .move(edge: .top)))
@@ -89,7 +89,7 @@ struct GeneralSettingsView: View {
 
             Section("System Monitor") {
                 Toggle("Show system monitor in menu bar", isOn: menuBarMonitorBinding)
-                Text("Live CPU, memory, and disk meters in the menu bar. MClean keeps running in the background while this is on.")
+                Text("Live CPU, memory, and disk meters in the menu bar. VXClean keeps running in the background while this is on.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -113,7 +113,7 @@ struct GeneralSettingsView: View {
             set: { newValue in
                 menuBarMonitor = newValue
                 // Tell AppDelegate to add/remove the status item without relaunch.
-                NotificationCenter.default.post(name: .mCleanMenuBarMonitorChanged, object: nil)
+                NotificationCenter.default.post(name: .vxCleanMenuBarMonitorChanged, object: nil)
             }
         )
     }
@@ -170,7 +170,7 @@ struct GeneralSettingsView: View {
             try task.run()
             NSApp.terminate(nil)
         } catch {
-            Logger.shared.log("Failed to relaunch MClean: \(error.localizedDescription)", level: .error)
+            Logger.shared.log("Failed to relaunch VXClean: \(error.localizedDescription)", level: .error)
         }
     }
 }
@@ -332,7 +332,7 @@ struct AboutSettingsView: View {
                 HStack {
                     MCleanAppIcon(size: 64, shadow: true)
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("MClean")
+                        Text("VXClean")
                             .font(.title2.bold())
                         Text(
                             String(
@@ -341,7 +341,7 @@ struct AboutSettingsView: View {
                             )
                         )
                             .foregroundStyle(.secondary)
-                        Text("Free, open-source macOS app manager.")
+                        Text("Based on MClean • Open Source macOS Cleaner & Manager")
                             .foregroundStyle(.secondary)
                             .font(.caption)
                     }
@@ -349,41 +349,12 @@ struct AboutSettingsView: View {
             }
 
             Section {
-                Link("GitHub Repository", destination: URL(string: "https://github.com/maclifevn/MClean")!)
-                Link("Report an Issue", destination: URL(string: "https://github.com/maclifevn/MClean/issues")!)
+                Link("Upstream Repository (MClean)", destination: URL(string: "https://github.com/maclifevn/MClean")!)
+                Link("Upstream Issue Tracker", destination: URL(string: "https://github.com/maclifevn/MClean/issues")!)
             }
 
             Section {
-                // Kept compact on purpose: the whole About tab must fit the
-                // Settings window without a scroll bar (~150pt QR still scans
-                // fine from a phone camera).
-                HStack(alignment: .center, spacing: 16) {
-                    Image("DonateQR")
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 150)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
-                        )
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Buy me a coffee ☕")
-                            .font(.system(size: 14, weight: .bold))
-                        Text("If MClean is useful to you, a small donation keeps it going. Thank you!")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text("Scan with MoMo or your banking app (VietQR · Napas 247)")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                    }
-                    Spacer(minLength: 0)
-                }
-                .padding(.vertical, 4)
-            }
-
-            Section {
-                Text("MIT License")
+                Text("MIT License — Based on MClean (Copyright 2026 MClean Contributors)")
                     .foregroundStyle(.secondary)
             }
         }

@@ -1,0 +1,9 @@
+{
+  "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-cli/schema.json",
+  "bundle": {
+    "macOS": { "minimumSystemVersion": "13.0" },
+    "resources": {
+      "../native/vxclean_engine": "vxclean_engine"
+    }
+  }
+}

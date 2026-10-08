@@ -6,9 +6,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// Owns the optional menu-bar status item. Nil until the monitor is enabled.
     private var menuBarController: MenuBarController?
 
-    /// Normally MClean quits when its window closes. When the menu-bar system
+    /// Normally VXClean quits when its window closes. When the menu-bar system
     /// monitor is enabled the app stays resident so the meters keep updating in
-    /// the menu bar; "Open MClean" in that menu reopens the window.
+    /// the menu bar; "Open VXClean" in that menu reopens the window.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         !UserDefaults.standard.bool(forKey: "settings.general.menuBarMonitor")
     }
@@ -17,33 +17,126 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSWindow.allowsAutomaticWindowTabbing = false
 
         // The status item is a core quick-access surface for new installs.
-        // `register` preserves an existing explicit opt-out.
         UserDefaults.standard.register(defaults: [
             "settings.general.menuBarMonitor": true,
         ])
 
-        // Install the menu-bar monitor if the user has it enabled. Never under
-        // XCTest — the status-item machinery would stall the test-host run loop.
+        // Install the menu-bar monitor if enabled. Never under XCTest.
         if NSClassFromString("XCTestCase") == nil {
             syncMenuBarMonitor()
             NotificationCenter.default.addObserver(
                 self, selector: #selector(syncMenuBarMonitor),
-                name: .mCleanMenuBarMonitorChanged, object: nil
+                name: .vxCleanMenuBarMonitorChanged, object: nil
+            )
+            // Lifecycle observers: handle window closing and becoming active
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(handleWindowWillClose(_:)),
+                name: NSWindow.willCloseNotification, object: nil
+            )
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(handleWindowDidBecomeKey(_:)),
+                name: NSWindow.didBecomeKeyNotification, object: nil
             )
         }
-        // Touch TCC-protected paths so macOS registers MClean in the
-        // Full Disk Access pane on first launch (fixes issue #75).
+
+        // Touch TCC-protected paths so macOS registers VXClean in the
+        // Full Disk Access pane on first launch.
         FullDiskAccessManager.shared.triggerRegistration()
-        // Register the Finder Services provider so "Uninstall with MClean"
-        // appears when an .app bundle is right-clicked (issue #109).
+
+        // Register the Finder Services provider so "Uninstall with VXClean"
+        // appears when an .app bundle is right-clicked.
         NSApp.servicesProvider = self
         NSUpdateDynamicServices()
     }
 
-    /// Finder Services entry point. Declared in Info.plist as NSMessage
-    /// `uninstallApp`; receives the right-clicked .app via the pasteboard and
-    /// hands it to AppState through a notification. Brings MClean forward so
-    /// the user lands on the uninstall scan.
+    // MARK: - Lifecycle Management
+
+    @objc private func handleWindowWillClose(_ notification: Notification) {
+        guard NSClassFromString("XCTestCase") == nil else { return }
+        // Defer window close handling on main queue after window finishes closing
+        DispatchQueue.main.async { [weak self] in
+            self?.updateActivationPolicy()
+        }
+    }
+
+    @objc private func handleWindowDidBecomeKey(_ notification: Notification) {
+        guard NSClassFromString("XCTestCase") == nil else { return }
+        if let window = notification.object as? NSWindow, isNormalAppWindow(window) {
+            if NSApp.activationPolicy() != .regular {
+                NSApp.setActivationPolicy(.regular)
+            }
+        }
+    }
+
+    /// Evaluates open windows and updates activation policy using production AppLifecyclePolicy.
+    func updateActivationPolicy() {
+        guard NSClassFromString("XCTestCase") == nil else { return }
+        let menuBarEnabled = UserDefaults.standard.bool(forKey: "settings.general.menuBarMonitor")
+        let currentPolicy: AppActivationPolicy = (NSApp.activationPolicy() == .accessory) ? .accessory : .regular
+
+        let decision = AppLifecyclePolicy.decidePolicy(
+            isMenuBarEnabled: menuBarEnabled,
+            hasNormalWindows: hasNormalAppWindows(),
+            hasActiveModalOrSheet: hasActiveModalOrSheet(),
+            currentPolicy: currentPolicy
+        )
+
+        if decision.shouldTerminate {
+            NSApp.terminate(nil)
+            return
+        }
+
+        let targetNS: NSApplication.ActivationPolicy = (decision.desiredPolicy == .accessory) ? .accessory : .regular
+        if NSApp.activationPolicy() != targetNS {
+            NSApp.setActivationPolicy(targetNS)
+        }
+    }
+
+    private func isNormalAppWindow(_ window: NSWindow) -> Bool {
+        guard !(window is NSPanel) else { return false }
+        guard window.styleMask.contains(.titled) else { return false }
+        guard window.sheetParent == nil else { return false }
+        let className = String(describing: type(of: window))
+        guard !className.contains("NSStatusBarWindow"), !className.contains("NSPopover") else { return false }
+        // Minimized windows still count as open windows
+        return window.isVisible || window.isMiniaturized
+    }
+
+    private func hasNormalAppWindows() -> Bool {
+        NSApp.windows.contains { isNormalAppWindow($0) }
+    }
+
+    private func hasActiveModalOrSheet() -> Bool {
+        NSApp.modalWindow != nil || NSApp.windows.contains { $0.attachedSheet != nil }
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        let result = AppLifecyclePolicy.handleReopen()
+        if result.presentMain {
+            NSApp.setActivationPolicy(.regular)
+            presentMainWindow()
+        }
+        return true
+    }
+
+    func presentMainWindow() {
+        NSApp.setActivationPolicy(.regular)
+        if let controller = menuBarController {
+            controller.presentMainWindow()
+        } else {
+            let existing = NSApp.windows.first { $0.identifier == MenuBarController.mainWindowIdentifier }
+            if let window = existing {
+                if window.isMiniaturized { window.deminiaturize(nil) }
+                window.makeKeyAndOrderFront(nil)
+                NSApp.activate(ignoringOtherApps: true)
+            } else {
+                WindowOpener.shared.open?("main")
+                NSApp.activate(ignoringOtherApps: true)
+            }
+        }
+    }
+
+    /// Finder Services entry point. Declared in Info.plist as NSMessage `uninstallApp`.
     @objc func uninstallApp(_ pboard: NSPasteboard,
                             userData: String?,
                             error: AutoreleasingUnsafeMutablePointer<NSString>?) {
@@ -53,36 +146,68 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             error?.pointee = "Select an application (.app) to uninstall." as NSString
             return
         }
+        NSApp.setActivationPolicy(.regular)
+        presentMainWindow()
         NSApp.activate(ignoringOtherApps: true)
-        // Buffer the path for the cold-launch case (AppState may not exist yet,
-        // and NotificationCenter does not replay); AppState drains it in init.
+
         ExternalUninstallBuffer.pendingPath = appURL.path
         NotificationCenter.default.post(
-            name: .mCleanExternalUninstall,
+            name: .vxCleanExternalUninstall,
             object: nil,
             userInfo: ["path": appURL.path]
         )
     }
 
-    /// Create or tear down the menu-bar status item to match the current
-    /// Settings toggle. Posted to whenever the toggle flips so it takes effect
-    /// without a relaunch.
+    /// Synchronize menu-bar status item with settings toggle.
     @objc func syncMenuBarMonitor() {
+        guard NSClassFromString("XCTestCase") == nil else { return }
         let enabled = UserDefaults.standard.bool(forKey: "settings.general.menuBarMonitor")
-        if enabled, menuBarController == nil {
-            menuBarController = MenuBarController()
-        } else if !enabled, let controller = menuBarController {
-            controller.teardown()
-            menuBarController = nil
+        if enabled {
+            if menuBarController == nil {
+                menuBarController = MenuBarController()
+            }
+        } else {
+            if let controller = menuBarController {
+                controller.teardown()
+                menuBarController = nil
+            }
+            let currentPolicy: AppActivationPolicy = (NSApp.activationPolicy() == .accessory) ? .accessory : .regular
+            let result = AppLifecyclePolicy.handleMenuBarDisabledInBackground(
+                hasNormalWindows: hasNormalAppWindows(),
+                currentPolicy: currentPolicy
+            )
+            if result.reopenMainWindow {
+                NSApp.setActivationPolicy(.regular)
+                presentMainWindow()
+            }
         }
     }
 }
 
-extension Notification.Name {
-    /// Posted when the "Show system monitor in menu bar" Settings toggle flips,
-    /// so AppDelegate can add/remove the status item live.
-    static let mCleanMenuBarMonitorChanged = Notification.Name("MClean.MenuBarMonitorChanged")
-    static let mCleanSmartScanRequested = Notification.Name("MClean.SmartScanRequested")
+/// Capture helper for SwiftUI openSettings on macOS 14+
+struct SettingsOpenerCapture: View {
+    var body: some View {
+        if #available(macOS 14.0, *) {
+            SettingsOpenerCaptureV14()
+        } else {
+            Color.clear.frame(width: 0, height: 0)
+        }
+    }
+}
+
+@available(macOS 14.0, *)
+private struct SettingsOpenerCaptureV14: View {
+    @Environment(\.openSettings) private var openSettings
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .onAppear {
+                AppWindowManager.shared.openSettingsAction = {
+                    openSettings()
+                }
+            }
+    }
 }
 
 @main
@@ -90,12 +215,10 @@ struct MCleanApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var appState = AppState()
     @StateObject private var theme = ThemeManager.shared
-    @AppStorage("MClean.OnboardingComplete") private var onboardingComplete = false
+    @AppStorage("VXClean.OnboardingComplete") private var onboardingComplete = false
 
     init() {
-        // Enter CLI mode only when the first arg is a known command. Xcode and
-        // LaunchServices inject args like -NSDocumentRevisionsDebugMode and
-        // -psn_<pid> that must not be interpreted as CLI commands.
+        // Enter CLI mode only when first arg is a known command
         if let first = CommandLine.arguments.dropFirst().first,
            CLI.isKnownCommand(first) {
             CLI.run()
@@ -115,10 +238,8 @@ struct MCleanApp: App {
             }
             .environmentObject(theme)
             .preferredColorScheme(theme.appearance.colorScheme)
-            // Record the openWindow action so the menu-bar popover can reopen
-            // this window after it's been closed (the popover lives outside the
-            // scene graph and can't use openWindow itself).
-            .background(WindowOpenerCapture())
+            .background(MainWindowLifecycleCapture())
+            .background(SettingsOpenerCapture())
         }
         .windowStyle(.automatic)
         .windowToolbarStyle(.unified)
@@ -127,9 +248,10 @@ struct MCleanApp: App {
         .commands {
             CommandGroup(replacing: .newItem) {}
             CommandMenu("Updates") {
-                Button("Check for Updates") {
+                Button("Check for Updates (Unavailable)") {
                     UpdateService.shared.checkForUpdates()
                 }
+                .disabled(true)
                 .keyboardShortcut("u", modifiers: [.command, .shift])
             }
         }
@@ -137,13 +259,7 @@ struct MCleanApp: App {
         Settings {
             SettingsView()
                 .environmentObject(appState)
+                .background(SettingsLifecycleCapture())
         }
-
-        // The opt-in menu-bar system monitor is an AppKit NSStatusItem managed
-        // by AppDelegate/MenuBarController rather than a SwiftUI MenuBarExtra:
-        // a conditional `.window`-style MenuBarExtra fails to type-check, and an
-        // unconditional one sets up status-item machinery that hangs the XCTest
-        // host. The AppKit controller is only created when enabled and never
-        // under tests, sidestepping both problems.
     }
 }

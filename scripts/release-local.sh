@@ -15,6 +15,11 @@
 #
 set -euo pipefail
 
+# Guard against accidental execution: VXClean release credentials are not configured yet.
+echo "ERROR: VXClean release credentials (signing identity, notarization) are not configured." >&2
+echo "Release is disabled to prevent accidental release under upstream credentials." >&2
+exit 1
+
 VERSION="${1:?Usage: $0 <version> [notary_profile]}"
 NOTARY_PROFILE="${2:-AC_NOTARY}"
 TEAM_ID="H3WXHVTP97"

@@ -52,3 +52,9 @@ _work/
 
 # Local handoff notes (never committed)
 HANDOFF.md
+
+# Desktop Tauri & Frontend Build Artifacts
+desktop/node_modules/
+desktop/dist/
+desktop/src_tauri/target/
+desktop/native/vxclean_engine

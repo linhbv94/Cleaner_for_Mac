@@ -339,7 +339,7 @@ private struct PermissionScene: View {
                     .font(.system(size: 26, weight: .semibold))
                     .multilineTextAlignment(.center)
                 Text(hasFda
-                     ? "MClean can now reach the locations macOS protects by default."
+                     ? "VXClean can now reach the locations macOS protects by default."
                      : "macOS hides certain folders from every app until you say otherwise. We need them to find caches and uninstall cleanly.")
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
@@ -370,7 +370,7 @@ private struct PermissionScene: View {
                         Button {
                             openSettings()
                         } label: {
-                            Label(hasOpenedSettings ? "Reopen Settings" : "Open Settings & reveal MClean",
+                            Label(hasOpenedSettings ? "Reopen Settings" : "Open Settings & reveal VXClean",
                                   systemImage: "gear")
                                 .font(.system(size: 13, weight: .semibold))
                                 .frame(minWidth: 240)
@@ -413,7 +413,7 @@ private struct ReadyScene: View {
     @State private var bounce = false
     @State private var fireConfetti = false
     @State private var confettiWork: DispatchWorkItem?
-    @AppStorage("MClean.HasSeenWelcomeConfetti") private var hasSeenConfetti = false
+    @AppStorage("VXClean.HasSeenWelcomeConfetti") private var hasSeenConfetti = false
 
     var body: some View {
         ZStack {
