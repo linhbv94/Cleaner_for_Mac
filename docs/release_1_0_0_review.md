@@ -18,3 +18,8 @@ Ngày cập nhật: 2026-10-11. User giao review và release test; đầu ra là
 ## Giới hạn bản test
 
 OS authentication dialog Cancel, physical tray click, Intel GUI/macOS13, updater install/restart chưa xác minh. AI cold-start/plugin/MCP và Detailed full scope còn backlog. Ad-hoc, chưa notarized; Windows không nằm trong release này. Số byte dọn là ước tính logical, không phải block disk thực thu hồi. Không tự nâng quyền/FDA hoặc dọn data user để chứng minh release.
+
+- Native packaged Quick read-only: trả kết quả và thông báo partial system/user/large_files; LargeFiles opt-in. Mở confirmation: số mục permanent/Trash hiển thị, confirm disabled khi chưa tick → Cancel trở lại. Không dọn dữ liệu thật; app đã Quit. Số GB là snapshot máy này, không dùng làm oracle parity.
+- [PR#1](https://github.com/linhbv94/Cleaner_for_Mac/pull/1), commit `173067c823859ba41f86456e7ae55d4898b7d0f9`; [CI38128968409](https://github.com/linhbv94/Cleaner_for_Mac/actions/runs/38128968409) đang chạy hai Mac.
+
+- CI lượt đầu native oracle lỗi vì shallow checkout thiếu commit MClean42cf1f8, dù Rust Silicon21 đạt. Sửa checkout fetch-depth0 cho PR/tag build để giữ test tham chiếu độc lập; không bỏ oracle hoặc đổi engine.
