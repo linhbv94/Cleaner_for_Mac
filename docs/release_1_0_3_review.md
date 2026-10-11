@@ -9,7 +9,7 @@ Ngày cập nhật:2026-10-11. Draft cho QA, không publish.
 ## Bằng chứng phiên bản cuối
 
 - Tag `v1.0.3` → `bcba9d04087b4f3145e675abe06b7d0397ae1a56`. [Main checks38131736518](https://github.com/linhbv94/Cleaner_for_Mac/actions/runs/38131736518) đạt cảSilicon/Intel. Mỗi kiến trúc: Rust21, native27, manager9, release7, retention10, uninstall5, circle18 và frontend build. Bulk7000file: Silicon9.826giây, Intel33.798giây; local8.038giây.
-- [Release CI](https://github.com/linhbv94/Cleaner_for_Mac/actions/runs/38131737977) đạt prepare, build Silicon, build Intel và validate. [Draft VXClean1.0.3](https://github.com/linhbv94/Cleaner_for_Mac/releases/tag/v1.0.3), ID409593328; không publish.
+- [Release CI](https://github.com/linhbv94/Cleaner_for_Mac/actions/runs/38131737977) đạt prepare, build Silicon, build Intel và validate. [Draft VXClean1.0.3](https://github.com/linhbv94/Cleaner_for_Mac/releases/tag/untagged-401f263514f8815616ec), ID409593328; không publish.
 - AppSilicon tải từ draft: About/Info1.0.3, identifier đúng, main/Swiftengine arm64, icon khớp, codesign deep/strict đạt; không có hooks ENGINE_TESTING trong production. Dashboard trảCPU/RAM/disk/battery thật; Cập nhật tách riêng khỏi About; Cmd+Q thoát hết đăng ký VXClean. Không dọn dữ liệu user.
 - Review ban đầu sửa kết quả xóa System Junk một phần từ skipped thành outcome_unknown; fixture xóa thật một phần, giữjournal và khôngautoreplay đạt. Chi tiết ở [review1.0.0](release_1_0_0_review.md).
 
