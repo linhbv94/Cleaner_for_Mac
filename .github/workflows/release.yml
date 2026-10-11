@@ -87,13 +87,13 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci --ignore-scripts
         working-directory: desktop
+      - name: Rust safety and journal regression
+        run: cargo test --locked --lib
+        working-directory: desktop/src_tauri
       - name: Native safety and lifecycle fixtures
         run: python3 scripts/test_native_maintenance.py
       - name: Manager cleanup fixtures
         run: python3 scripts/test_manager_cleanup.py
-      - name: Rust safety and journal regression
-        run: cargo test --locked --lib
-        working-directory: desktop/src_tauri
       - name: Frontend state regression
         run: |
           node scripts/test_scan_retention.cjs
