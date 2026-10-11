@@ -1,32 +1,41 @@
-name: Build
-
+name: VXClean checks
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
-
+permissions:
+  contents: read
 jobs:
-  build:
-    runs-on: macos-15
+  check:
+    if: github.event.repository.private == false
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Install XcodeGen
-        run: brew install xcodegen
-
-      - name: Generate Xcode project
-        run: xcodegen generate
-
-      - name: Build (Universal Binary)
-        run: |
-          xcodebuild -project MClean.xcodeproj \
-            -scheme MClean \
-            -configuration Release \
-            -derivedDataPath build \
-            build \
-            ARCHS="arm64 x86_64" \
-            ONLY_ACTIVE_ARCH=NO \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm ci --ignore-scripts
+        working-directory: desktop
+      - run: npm run build
+        working-directory: desktop
+      - run: cargo test --locked --lib
+        working-directory: desktop/src_tauri
+      - name: Native safety and lifecycle fixtures
+        run: python3 scripts/test_native_maintenance.py
+      - name: Manager cleanup fixtures
+        run: python3 scripts/test_manager_cleanup.py
+      - name: Release signing and publish guards
+        run: node --test scripts/test_release_automation.mjs
+      - run: node scripts/test_scan_retention.cjs
+      - run: node scripts/test_uninstall_selection.cjs
+      - run: node scripts/test_circle_packing.cjs

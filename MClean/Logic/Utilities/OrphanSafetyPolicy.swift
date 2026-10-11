@@ -34,14 +34,19 @@ enum OrphanSafetyPolicy {
         "/Library/CloudStorage",
     ]
 
-    static func isSafeCandidate(_ url: URL) -> Bool {
+    static func isSafeCandidate(_ url: URL, userHome: String? = nil) -> Bool {
+        func remap(_ root: String) -> String {
+            guard let userHome, root.hasPrefix(home + "/") else { return root }
+            return userHome + root.dropFirst(home.count)
+        }
         let path = normalizedPath(url)
         let lowerPath = path.lowercased()
 
         // Belt-and-suspenders: reject any high-risk home dotpath (defined in
         // Conditions.swift). The allowedRoots filter below would catch most
         // of these, but this early block keeps the rule obvious.
-        for root in highRiskHomeDotPaths {
+        for original in highRiskHomeDotPaths {
+            let root = remap(original)
             if path == root || path.hasPrefix(root + "/") {
                 return false
             }
@@ -51,7 +56,7 @@ enum OrphanSafetyPolicy {
         // sibling like /tmpfoo. Trailing "/" prevents hasPrefix from matching
         // sibling directories whose names merely start with the root name.
         guard allowedRoots.contains(where: { root in
-            let rootWithSlash = root.lowercased() + "/"
+            let rootWithSlash = remap(root).lowercased() + "/"
             return lowerPath.hasPrefix(rootWithSlash)
         }) else {
             return false

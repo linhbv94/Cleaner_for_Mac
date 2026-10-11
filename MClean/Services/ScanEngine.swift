@@ -1,8 +1,50 @@
 import Foundation
+import Darwin
+
+/// CLI configuration is untrusted. Cache destinations need an independent allowlist.
+enum NodeCacheSafetyPolicy {
+    static func allows(_ path: String, home: String, manager: String? = nil) -> Bool {
+        guard path.hasPrefix("/"), !path.unicodeScalars.contains(where: { $0.value < 32 }),
+              !path.split(separator: "/").contains(where: { $0 == "." || $0 == ".." }) else { return false }
+        guard let resolved = realpath(path, nil) else { return false }
+        let canonical = String(cString: resolved)
+        free(resolved)
+        let expandedAlias = path.hasPrefix("/var/") || path.hasPrefix("/tmp/") ? "/private" + path : path
+        guard canonical == expandedAlias,
+              (try? FileManager.default.attributesOfItem(atPath: path)[.type] as? FileAttributeType) == .typeDirectory else { return false }
+        guard let homeResolved = realpath(home, nil) else { return false }
+        let canonicalHome = String(cString: homeResolved)
+        free(homeResolved)
+        let roots: [(String, String)] = [
+            ("npm", canonicalHome + "/.npm"), ("npm", canonicalHome + "/.cache/npm"),
+            ("yarn", canonicalHome + "/Library/Caches/Yarn"), ("yarn", canonicalHome + "/.cache/yarn"),
+            ("pnpm", canonicalHome + "/Library/pnpm/store"), ("pnpm", canonicalHome + "/.local/share/pnpm/store")]
+        return roots.contains { name, root in
+            (manager == nil || manager == name) && (canonical == root || canonical.hasPrefix(root + "/"))
+        }
+    }
+}
 
 actor ScanEngine {
     private let fileManager = FileManager.default
-    private let home = FileManager.default.homeDirectoryForCurrentUser.path
+    private let home: String
+    private let systemRoot: String
+    private var limitedPaths: Set<String> = []
+    private var unsupportedCaches: Set<String> = []
+    private var quickOnly = false
+
+    init() {
+        #if ENGINE_TESTING
+        self.home = ProcessInfo.processInfo.environment["VXCLEAN_TEST_HOME"] ?? FileManager.default.homeDirectoryForCurrentUser.path
+        self.systemRoot = self.home + "/system"
+        #else
+        self.home = FileManager.default.homeDirectoryForCurrentUser.path
+        self.systemRoot = ""
+        #endif
+    }
+
+    func unreadablePaths() -> [String] { Array(limitedPaths).sorted() }
+    func unsupportedCachePaths() -> [String] { Array(unsupportedCaches).sorted() }
 
     /// Live path reporter for the dashboard's scanning ticker. Throttled so
     /// a directory with thousands of entries doesn't flood the main actor.
@@ -38,9 +80,12 @@ actor ScanEngine {
 
     func scanCategory(
         _ category: CleaningCategory,
+        quickOnly: Bool = false,
         onPath: (@Sendable (String) -> Void)? = nil
     ) async -> CategoryResult {
         self.onPath = onPath
+        self.quickOnly = quickOnly
+        limitedPaths = []
         defer { self.onPath = nil }
         switch category {
         case .smartScan:
@@ -109,12 +154,12 @@ actor ScanEngine {
         var totalSize: Int64 = 0
 
         let systemPaths = [
-            "/Library/Caches",
-            "/Library/Logs",
-            "/private/var/log",
+            "\(systemRoot)/Library/Caches",
+            "\(systemRoot)/Library/Logs",
+            "\(systemRoot)/private/var/log",
             "\(home)/Library/Logs",
-            "/tmp",
-            "/private/var/tmp",
+            "\(systemRoot)/tmp",
+            "\(systemRoot)/private/var/tmp",
         ]
 
         for path in systemPaths {
@@ -148,10 +193,7 @@ actor ScanEngine {
 
         // Also scan for npm/pip/yarn caches
         let devCaches = [
-            "\(home)/.npm/_cacache",
             "\(home)/.cache/pip",
-            "\(home)/.cache/yarn",
-            "\(home)/.cache/pnpm",
             "\(home)/Library/Caches/pip",
         ]
 
@@ -431,42 +473,26 @@ actor ScanEngine {
         // Detect custom HOMEBREW_CACHE via `brew --cache`. Strip HOMEBREW_*
         // from the child env so an attacker can't steer the output via
         // launchctl setenv, then validate the output against knownBrewRoots.
+        #if ENGINE_TESTING
+        let brewBinPaths: [String] = []
+        #else
         let brewBinPaths = ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"]
+        #endif
         var detectedCustomCache = false
         for brewBin in brewBinPaths {
             guard fileManager.fileExists(atPath: brewBin) else { continue }
-            let task = Process()
-            task.executableURL = URL(fileURLWithPath: brewBin)
-            task.arguments = ["--cache"]
             var sanitizedEnv = ProcessInfo.processInfo.environment
             for key in Array(sanitizedEnv.keys) where key.hasPrefix("HOMEBREW_") {
                 sanitizedEnv.removeValue(forKey: key)
             }
-            task.environment = sanitizedEnv
-            let pipe = Pipe()
-            task.standardOutput = pipe
-            task.standardError = Pipe()
-            do {
-                try task.run()
-                task.waitUntilExit()
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                if let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-                   !output.isEmpty {
-                    let normalized = normalizePath(output)
-                    let isKnown = knownBrewRoots.contains { root in
-                        normalized == root || normalized.hasPrefix(root + "/")
-                    }
-                    guard isKnown else {
-                        Logger.shared.log("Refusing suspicious brew cache path: \(output)", level: .warning)
-                        break
-                    }
-                    if !brewCachePaths.map(normalizePath).contains(normalized) {
-                        brewCachePaths.append(output)
-                    }
-                    detectedCustomCache = true
+            if let output = runCommandReadingStdout(executable: brewBin, args: ["--cache"], environment: sanitizedEnv)?.trimmingCharacters(in: .whitespacesAndNewlines), !output.isEmpty {
+                let normalized = normalizePath(output)
+                guard knownBrewRoots.contains(where: { normalized == $0 || normalized.hasPrefix($0 + "/") }) else {
+                    Logger.shared.log("Refusing suspicious brew cache path: \(output)", level: .warning)
+                    break
                 }
-            } catch {
-                Logger.shared.log("Failed to run \(brewBin) --cache: \(error.localizedDescription)", level: .warning)
+                if !brewCachePaths.map(normalizePath).contains(normalized) { brewCachePaths.append(output) }
+                detectedCustomCache = true
             }
             break // Only need the first available brew binary
         }
@@ -547,12 +573,18 @@ actor ScanEngine {
                let detected = runCommandReadingStdout(executable: cliPath, args: cmd.args) {
                 let normalized = detected.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !normalized.isEmpty,
+                   !NodeCacheSafetyPolicy.allows(normalized, home: home, manager: cmd.cli) {
+                    unsupportedCaches.insert(normalized)
+                }
+                if NodeCacheSafetyPolicy.allows(normalized, home: home, manager: cmd.cli),
                    !paths.map(normalizePath).contains(normalizePath(normalized)) {
                     paths.append(normalized)
                 }
             }
 
-            for path in paths {
+            for rootPath in paths {
+                guard NodeCacheSafetyPolicy.allows(rootPath, home: home, manager: manager.detectionCommand?.cli) else { continue }
+                let path = manager.name == "npm cache" ? rootPath + "/_cacache" : rootPath
                 guard fileManager.fileExists(atPath: path) else { continue }
                 let size = directorySize(path: path)
                 guard size > 0 else { continue }
@@ -575,6 +607,9 @@ actor ScanEngine {
 
     private func locateExecutable(named name: String, searchPaths: [String]) -> String? {
         for dir in searchPaths {
+            #if ENGINE_TESTING
+            guard dir.hasPrefix(home + "/") else { continue }
+            #endif
             let candidate = (dir as NSString).appendingPathComponent(name)
             if fileManager.isExecutableFile(atPath: candidate) {
                 return candidate
@@ -593,23 +628,33 @@ actor ScanEngine {
         return nil
     }
 
-    private func runCommandReadingStdout(executable: String, args: [String]) -> String? {
+    private func runCommandReadingStdout(executable: String, args: [String], environment: [String: String]? = nil) -> String? {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: executable)
         task.arguments = args
+        task.environment = environment
         let pipe = Pipe()
         task.standardOutput = pipe
-        task.standardError = Pipe()
-        do {
-            try task.run()
-            task.waitUntilExit()
-        } catch {
-            Logger.shared.log("\(executable) \(args.joined(separator: " ")) failed: \(error.localizedDescription)", level: .warning)
-            return nil
+        task.standardError = FileHandle.nullDevice
+        do { try task.run() } catch { return nil }
+        let fd = pipe.fileHandleForReading.fileDescriptor
+        let flags = fcntl(fd, F_GETFL)
+        _ = fcntl(fd, F_SETFL, flags | O_NONBLOCK)
+        let deadline = Date().addingTimeInterval(5)
+        var output = Data()
+        var buffer = [UInt8](repeating: 0, count: 8192)
+        while true {
+            let count = read(fd, &buffer, buffer.count)
+            if count > 0 {
+                output.append(contentsOf: buffer.prefix(count))
+                if output.count > 1024 * 1024 { kill(task.processIdentifier, SIGKILL); task.waitUntilExit(); return nil }
+            } else if !task.isRunning { break }
+            if Date() > deadline { kill(task.processIdentifier, SIGKILL); task.waitUntilExit(); return nil }
+            if count <= 0 { Thread.sleep(forTimeInterval: 0.02) }
         }
+        task.waitUntilExit()
         guard task.terminationStatus == 0 else { return nil }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        return String(data: data, encoding: .utf8)
+        return String(data: output, encoding: .utf8)
     }
 
     private func scanDockerCache() -> CategoryResult {
@@ -653,7 +698,11 @@ actor ScanEngine {
         // We don't try to delete it directly — the user runs
         // `docker system prune` themselves, which is the safe path.
         // We just show how much they can recover.
+        #if ENGINE_TESTING
+        let dockerBinPaths: [String] = []
+        #else
         let dockerBinPaths = ["/usr/local/bin/docker", "/opt/homebrew/bin/docker"]
+        #endif
         for dockerBin in dockerBinPaths where fileManager.fileExists(atPath: dockerBin) {
             if let reclaimable = reclaimableDockerSpace(dockerBin: dockerBin), reclaimable > 0 {
                 items.append(CleanableItem(
@@ -676,22 +725,7 @@ actor ScanEngine {
     /// Returns nil when Docker isn't running or the command fails — callers
     /// should treat that as "no reclaimable info available", not as an error.
     private func reclaimableDockerSpace(dockerBin: String) -> Int64? {
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: dockerBin)
-        task.arguments = ["system", "df", "--format", "{{.Reclaimable}}"]
-        let stdoutPipe = Pipe()
-        task.standardOutput = stdoutPipe
-        task.standardError = Pipe()
-        do {
-            try task.run()
-            task.waitUntilExit()
-        } catch {
-            Logger.shared.log("docker system df failed: \(error.localizedDescription)", level: .warning)
-            return nil
-        }
-        guard task.terminationStatus == 0 else { return nil }
-        let data = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-        guard let output = String(data: data, encoding: .utf8) else { return nil }
+        guard let output = runCommandReadingStdout(executable: dockerBin, args: ["system", "df", "--format", "{{.Reclaimable}}"]) else { return nil }
         // Each line looks like e.g. "1.234GB (45%)" — parse the leading number.
         var total: Int64 = 0
         for line in output.split(separator: "\n") {
@@ -736,8 +770,11 @@ actor ScanEngine {
     ) -> [CleanableItem] {
         var items: [CleanableItem] = []
 
-        guard fileManager.fileExists(atPath: path),
-              fileManager.isReadableFile(atPath: path) else { return [] }
+        guard fileManager.fileExists(atPath: path) else { return [] }
+        guard fileManager.isReadableFile(atPath: path) else {
+            limitedPaths.insert(path)
+            return []
+        }
 
         do {
             // One listing with prefetched attributes replaces the previous
@@ -756,6 +793,7 @@ actor ScanEngine {
                 }
 
                 guard let values = try? entryURL.resourceValues(forKeys: Self.scanEntryKeySet) else {
+                    limitedPaths.insert(fullPath)
                     continue
                 }
                 // Security: skip symlinks to prevent symlink-following attacks
@@ -763,7 +801,7 @@ actor ScanEngine {
 
                 let name = entryURL.lastPathComponent
                 if values.isDirectory ?? false {
-                    let size = directorySize(path: fullPath)
+                    let size = directorySize(path: fullPath, entryLimit: category == .systemJunk ? 10000 : 200000)
                     if size > 1024 { // Skip tiny entries
                         items.append(CleanableItem(
                             name: name,
@@ -788,6 +826,7 @@ actor ScanEngine {
                 }
             }
         } catch {
+            limitedPaths.insert(path)
             Logger.shared.log("Cannot enumerate \(path): \(error.localizedDescription)", level: .warning)
         }
 
@@ -858,19 +897,26 @@ actor ScanEngine {
         (path as NSString).standardizingPath
     }
 
-    private func directorySize(path: String) -> Int64 {
+    private func directorySize(path: String, entryLimit: Int = 200000) -> Int64 {
         var totalSize: Int64 = 0
 
         guard let enumerator = fileManager.enumerator(
             at: URL(fileURLWithPath: path),
             includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey],
-            options: [.skipsHiddenFiles]
-        ) else { return 0 }
+            options: [.skipsHiddenFiles],
+            errorHandler: { url, _ in
+                self.limitedPaths.insert(url.path)
+                return true
+            }
+        ) else {
+            if fileManager.fileExists(atPath: path) { limitedPaths.insert(path) }
+            return 0
+        }
 
         var count = 0
         for case let fileURL as URL in enumerator {
             count += 1
-            if count > 10000 { break } // Safety limit for very large directories
+            if count > entryLimit { limitedPaths.insert(path); break } // System Junk retains the original MClean 10k size accounting.
 
             report(fileURL.path)
             // Same key set as the enumerator prefetch, resolved from the URL

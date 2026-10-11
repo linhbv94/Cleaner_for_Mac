@@ -1,0 +1,20 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const {stripTypeScriptTypes} = require('node:module');
+(async () => {
+ const source = stripTypeScriptTypes(fs.readFileSync(require('node:path').join(__dirname,'../desktop/src/services/scan_retention.ts'),'utf8'));
+ const {ScanRetention,SCAN_RETENTION_MS} = await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+ let now=1000; const cache=new ScanRetention(()=>now);
+ assert.equal(cache.reusable('smart_scan'),false);
+ const smart=cache.begin('smart_scan'); assert.equal(cache.reusable('smart_scan'),true); assert.equal(cache.expiresIn('smart_scan'),Infinity);
+ now+=10000; cache.finish('smart_scan',smart,true); assert.equal(cache.expiresIn('smart_scan'),SCAN_RETENTION_MS);
+ now+=SCAN_RETENTION_MS-1; assert.equal(cache.reusable('smart_scan'),true);
+ now++; assert.equal(cache.reusable('smart_scan'),false); assert.equal(cache.expiresIn('smart_scan'),0);
+ const lens=cache.begin('space_lens');cache.finish('space_lens',lens,true); assert.equal(cache.reusable('space_lens'),true); assert.equal(cache.reusable('smart_scan'),false);
+ const apps=cache.begin('uninstaller'); cache.invalidate(); cache.finish('uninstaller',apps,true); assert.equal(cache.reusable('uninstaller'),false); assert.equal(cache.reusable('space_lens'),false);
+ const cancelled=cache.begin('cleanup'); cache.finish('cleanup',cancelled,false);assert.equal(cache.reusable('cleanup'),false);
+ const old=cache.begin('orphans'),newer=cache.begin('orphans');cache.finish('orphans',old,true);assert.equal(cache.expiresIn('orphans'),Infinity);cache.finish('orphans',newer,true);assert.equal(cache.reusable('orphans'),true);
+ const fresh=cache.begin('cleanup');cache.finish('cleanup',fresh,true);assert.equal(cache.reusable('cleanup'),true);
+ let notifications=0;const off=cache.subscribe(()=>notifications++);cache.invalidate();off();cache.invalidate();assert.equal(notifications,1);
+ console.log('Scan retention: 10 nhóm kiểm tra TTL/completion/pending/failure/invalidation/late result/scope/subscription đạt');
+})();

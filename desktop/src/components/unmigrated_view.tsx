@@ -24,6 +24,10 @@ const TAB_TITLES: Record<TabId, { title: string; desc: string }> = {
     title: 'Gỡ ứng dụng (Uninstaller)',
     desc: 'Gỡ bỏ triệt để ứng dụng kèm các tệp liên quan trong Library và Application Support.',
   },
+  orphans: {
+    title: 'Tệp Mồ côi (Orphans)',
+    desc: 'Quét và dọn sạch dữ liệu sót lại từ các ứng dụng đã từng gỡ bỏ thủ công.',
+  },
   space_lens: {
     title: 'Không gian Ổ đĩa (Space Lens)',
     desc: 'Trực quan hóa dung lượng tệp lớn và thư mục chiếm nhiều bộ nhớ APFS.',

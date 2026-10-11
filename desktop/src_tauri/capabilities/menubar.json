@@ -1,0 +1,1 @@
+{"identifier":"menubar","description":"Panel chỉ metrics và điều hướng; backend mutations main-only","windows":["menubar"],"permissions":["core:event:allow-listen","core:event:allow-unlisten"]}

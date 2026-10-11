@@ -167,6 +167,12 @@ def step_1_compile_swift():
     cmd.extend([
         str(SYSTEM_MONITOR_SWIFT),
         str(MAIN_SWIFT),
+        str(NATIVE_DIR / "maintenance_cli.swift"),
+        *[str(WORKSPACE_ROOT / "MClean" / file) for file in [
+            "Services/SpaceLensEngine.swift", "Models/SpaceLensNode.swift",
+            "Logic/Scanning/Conditions.swift", "Logic/Scanning/StringNormalization.swift",
+            "Logic/Utilities/OrphanSafetyPolicy.swift",
+        ]],
         "-o",
         str(ENGINE_BINARY),
     ])

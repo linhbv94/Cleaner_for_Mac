@@ -8,6 +8,7 @@ pub struct FeatureCapabilities {
     pub uninstaller: bool,
     pub space_lens: bool,
     pub menu_bar_monitor: bool,
+    pub orphans: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
