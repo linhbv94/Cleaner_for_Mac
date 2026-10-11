@@ -147,3 +147,15 @@ test('finalization preserves the draft tag and publishes only verified packages;
     } finally { rmSync(root, { recursive: true, force: true }); }
   }
 });
+
+// Exercise the custom CLI wrapper through npm, using the official Action's npm separator.
+test('custom release CLI receives installer flags as Tauri options, not Cargo arguments', () => {
+  const workflow = readFileSync('.github/workflows/release.yml', 'utf8');
+  const script = workflow.match(/^\s*tauriScript:\s*(.+)$/m)?.[1]?.trim();
+  assert.ok(script, 'Expected the custom src_tauri CLI wrapper');
+  const [bin, ...prefix] = script.split(/\s+/);
+  const result = spawnSync(bin, [...prefix, 'build', '--', '--bundles', 'app,dmg', '--help'], {cwd:'desktop', encoding:'utf8', timeout:30000});
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /generate bundles and installers/);
+  assert.match(result.stdout, /--bundles/);
+});

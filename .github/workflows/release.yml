@@ -119,7 +119,7 @@ jobs:
           uploadWorkflowArtifacts: false
           releaseAssetNamePattern: '${{ needs.prepare.outputs.asset_prefix }}_[version]_${{ matrix.asset_platform }}[_setup][ext]'
           projectPath: desktop
-          tauriScript: npm run tauri --
+          tauriScript: npm run tauri
           args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} -- --locked
 
   validate:
