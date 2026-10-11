@@ -1,6 +1,6 @@
 {
   "name": "vxclean",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "VXClean — Desktop System Monitor & Maintenance Bridge",
   "type": "module",
   "scripts": {
@@ -13,7 +13,8 @@
     "@tauri-apps/api": "^2.12.1",
     "lucide-react": "^1.52.0",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "@tauri-apps/plugin-updater": "2.13.1"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",

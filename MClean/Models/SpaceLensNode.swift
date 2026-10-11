@@ -18,6 +18,7 @@ final class SpaceLensNode: Identifiable, @unchecked Sendable {
     /// The directory could not be listed (missing Full Disk Access or POSIX
     /// permissions); its size is whatever was reachable, possibly zero.
     var isAccessDenied: Bool = false
+    var hasAccessDeniedDescendants: Bool = false
     private(set) var size: Int64
     /// Sorted descending by size. Contains directories and files at or above
     /// the engine's minNodeSize; smaller files are folded into `prunedSize`.

@@ -1,229 +1,34 @@
-# Feature Flow Specification: VXClean (`_spec2_feature_flow`)
+# User flow và state machine VXClean
 
-> **Tên sản phẩm:** VXClean  
-> **Thư mục dự án:** `cleaner_for_mac`  
-> **Mã tài liệu:** `_spec2_feature_flow`  
-> **Phiên bản:** 1.0.0  
-> **Ngày cập nhật:** 2026-10-07  
-> **Phạm vi:** Đặc tả chi tiết User Flow, State Machine và Sequence Logic cho toàn bộ các phân hệ chức năng.
+Version: 2.0.0 — 2026-10-10. Target; chưa nhận định source đã đạt. [Policy](15_cleanup_protection_policy.md), [menubar](16_menubar_release_ui.md).
 
----
+## Read/selection flow
 
-## 1. Sơ đồ Luồng Trạng thái Toàn cục (Global App State Machine)
+`idle → scanning → ready|partial|failed|cancelled`. Mọi event theo operation_id; cancel không hủy nhầm lượt khác. Kết quả ready cấp UUID ticket đúng operation và versions. Đổi tab không scan lại nếu state còn fresh trong retention 5 phút; mutation invalidates trước/sau, restart không reuse authority cũ.
 
-```text
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                        GLOBAL APPLICATION STATE MACHINE                                │
-└────────────────────────────────────────────────────────────────────────────────────────┘
+Quick chỉ ba nhóm; Large Files default false/Trash. Detail có categories rỗng/blocked với giải thích, chọn từng nhóm hoặc selections tổng quan. Scan incomplete không grant parent subtree. Rule/layout chưa support hiển thị unknown/disabled.
 
-                       [ App Launch ]
-                             │
-                             ▼
-                    ┌─────────────────┐
-                    │     IDLE        │◄─────────────────────────────┐
-                    │ (Dashboard Hot) │                              │
-                    └────────┬────────┘                              │
-                             │                                       │
-            ┌────────────────┼────────────────┐                      │
-            ▼                ▼                ▼                      │
-     [ Start Scan ]   [ Start Lens ]   [ Start AppScan ]             │
-            │                │                │                      │
-            ▼                ▼                ▼                      │
-     ┌──────────────┐ ┌──────────────┐ ┌──────────────┐              │
-     │   SCANNING   │ │ LENS_ANALYSIS│ │ UNINSTALL_   │              │
-     │  (Progress)  │ │ (Traversing) │ │ SCANNING     │              │
-     └──────┬───────┘ └──────┬───────┘ └──────┬───────┘              │
-            │                │                │                      │
-            ▼                ▼                ▼                      │
-     ┌──────────────┐ ┌──────────────┐ ┌──────────────┐              │
-     │ REVIEW_JUNK  │ │ LENS_BROWSE  │ │ APPS_LIST    │              │
-     │ (Selection)  │ │ (Drill-down) │ │ (Inspection) │              │
-     └──────┬───────┘ └──────┬───────┘ └──────┬───────┘              │
-            │                │                │                      │
-            └────────────────┼────────────────┘                      │
-                             ▼                                       │
-                    [ User Click Action ]                            │
-                             │                                       │
-                             ▼                                       │
-                    ┌─────────────────┐                              │
-                    │ CONFIRM_MODAL   │                              │
-                    │ (Safety Prompt) │                              │
-                    └────────┬────────┘                              │
-                             │ (User Approved)                       │
-                             ▼                                       │
-                    ┌─────────────────┐                              │
-                    │    CLEANING     │                              │
-                    │  (Progress IO)  │                              │
-                    └────────┬────────┘                              │
-                             │                                       │
-                             ▼                                       │
-                    ┌─────────────────┐                              │
-                    │ CLEAN_SUMMARY   │                              │
-                    │ (Space Freed)   │──────────────────────────────┘
-                    └─────────────────┘ (Back to Dashboard / Re-scan)
-```
+## Cleanup flow
 
----
+`planned → awaiting_confirmation → quitting_apps → revalidating → mutating → completed|partial|cancelled|failed|interrupted`.
 
-## 2. Chi tiết Luồng Phân hệ Smart Scan (Smart Scan Flow)
+1. Selection snapshot theo target IDs/rule/scope/version; review hậu quả từng risk row và direct delete/Trash.
+2. Nếu app/helper/build đang dùng target, Quit bình thường hoặc skip/chờ; Save/Cancel/timeout không mutation target đó. Không tự chạy app vốn đang đóng.
+3. Re-scan chỉ scope được chọn, revalidate rule/path/device/inode/descendants, reject scope_changed. Không thêm selection từ dữ liệu mới.
+4. Persist intent rồi mutation target exact; update outcome. Không coalesce parent bao protected child; dedup path/identity và bytes.
+5. Cancel ở boundary; timeout/crash có thể partial/outcome_unknown. Không re-run xóa tự động sau restart.
+6. Mở lại app VXClean đã thực sự Quit theo recovery record; báo launch và restore riêng. Chrome profile/tab thường phải fixture nghiệm thu; incognito/forms ngoài cam kết.
 
-### 2.1. Bảng Chuyển dịch Trạng thái (Smart Scan State Transition Table)
+## Uninstall/Orphans/Lens
 
-| Trạng thái Hiện tại | Sự kiện / Trigger | Điều kiện / Ràng buộc | Trạng thái Kế tiếp | Hành vi Hệ thống (Actions) |
-| :--- | :--- | :--- | :--- | :--- |
-| `IDLE` | `START_SMART_SCAN` | Không có tác vụ quét nào đang chạy | `PRE_CHECK` | Khóa nút Quét, kiểm tra trạng thái FDA và dung lượng đĩa trống. |
-| `PRE_CHECK` | `CHECK_COMPLETE` | Đã xác định danh sách module quét | `SCANNING` | Gửi lệnh IPC gọi `vxclean_engine scan --all`. Bắt đầu lắng nghe tiến trình. |
-| `SCANNING` | `SCAN_PROGRESS` | Nhận gói tin tiến trình từ Engine | `SCANNING` | Cập nhật thanh % tổng thể, hiển thị tên danh mục đang duyệt (vd: `Caches...`). |
-| `SCANNING` | `SCAN_FINISHED` | Engine trả về JSON danh sách rác | `REVIEW_RESULTS` | Phân loại rác theo nhóm (Caches, Logs, Xcode, Trash), tính tổng dung lượng có thể dọn. |
-| `REVIEW_RESULTS`| `TOGGLE_CATEGORY` | Người dùng tick/untick nhóm | `REVIEW_RESULTS` | Cập nhật lại `total_selected_bytes` và mảng ID cần dọn. |
-| `REVIEW_RESULTS`| `CONFIRM_CLEAN` | `total_selected_bytes > 0` | `PROMPT_CONFIRM` | Bật Modal xác nhận: liệt kê số lượng tệp và cảnh báo cơ chế xóa (trực tiếp vs Trash). |
-| `PROMPT_CONFIRM`| `CANCEL` | Người dùng bấm "Hủy" hoặc nhấn ESC | `REVIEW_RESULTS` | Đóng modal, giữ nguyên danh sách lựa chọn. |
-| `PROMPT_CONFIRM`| `PROCEED` | Người dùng bấm "Xác nhận dọn dẹp" | `CLEANING` | Gửi lệnh IPC `vxclean_engine clean --items <json_payload>`. |
-| `CLEANING` | `NEED_ADMIN` | Có tệp yêu cầu quyền quản trị | `ADMIN_CHALLENGE` | Kích hoạt cửa sổ xác thực hệ thống macOS (Touch ID / Mật khẩu). |
-| `CLEANING` | `CLEAN_COMPLETED`| Engine hoàn tất toàn bộ | `SUMMARY_SUCCESS` | Hiển thị màn hình chúc mừng, hiển thị số GB đã thu hồi thành công. |
-| `CLEANING` | `PARTIAL_ERROR` | Một số tệp bị khóa (in-use / denied) | `SUMMARY_WARNING` | Hiển thị số GB đã thu hồi kèm danh sách lỗi bỏ qua (file đang được ứng dụng khác mở). |
+Uninstall: inventory → app ticket + known/discovered association → explicit selection → review data loss → Trash. Apple/self/running app protected; broad candidate default false. Mixed success giữ ticket residual để retry permission-denied known paths; admin confirmation không áp discovery.
 
----
+Orphans: heuristic candidates → riêng orphan ticket → supported volatile targets + identity → confirm → policy → mutation/report. Absence không proof đã uninstall; unknown/app support/preferences bị chặn nếu không có rule.
 
-## 3. Luồng Gỡ cài đặt Ứng dụng (App Uninstaller Flow)
+Lens: folder read grant → depth 1/direct children → drill-down/breadcrumb → selected can_trash target → riêng lens ticket + identity → Trash. Outside Home chỉ read, Home Library/dot/Applications/root/self/running app protected. Không whole-root delete.
 
-```text
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                        APP UNINSTALLER SEQUENCE FLOW                                   │
-└────────────────────────────────────────────────────────────────────────────────────────┘
+## Main/panel lifecycle
 
-  [ Khởi động Tab Uninstaller ]
-         │
-         ▼
-  [ Quét /Applications & ~/Applications ]
-         │
-         ├── Đọc Info.plist: App Name, Bundle ID, Version, App Icon, Architectures
-         └── Đọc Dung lượng thư mục bundle (.app)
-         │
-         ▼
-  [ Quét tệp phụ thuộc liên quan (Associated Residuals) ]
-         │
-         ├── ~/Library/Application Support/<BundleID hoặc AppName>
-         ├── ~/Library/Caches/<BundleID>
-         ├── ~/Library/Preferences/<BundleID>.plist
-         ├── ~/Library/Saved Application State/<BundleID>.savedState
-         └── ~/Library/Logs/DiagnosticReports/<AppName>*
-         │
-         ▼
-  [ Bộ lọc An toàn Ứng dụng Hệ thống (System Protection Safeguard) ]
-         │
-         ├── Nếu App thuộc SIP / Apple Core (Safari, Finder, System Settings, Mail):
-         │       └── Đánh dấu "Bảo vệ hệ thống" ──► KHÓA KHÔNG CHO PHÉP CHỌN GỠ
-         │
-         └── Nếu App là VXClean chính nó:
-                 └── Đánh dấu "Ứng dụng tự thân" ──► KHÓA KHÔNG ĐƯỢC PHÉP TỰ GỠ
-         │
-         ▼
-  [ Người dùng Chọn Ứng dụng & Xem Phân rã Tệp (Tree Breakdown) ]
-         │
-         ├── Mặc định: Chọn toàn bộ file .app và các file cấu hình liên quan
-         └── Cho phép: Bỏ chọn file cấu hình (nếu muốn giữ lại cài đặt cũ)
-         │
-         ▼
-  [ Xác nhận Gỡ & Thực thi ]
-         │
-         ├── Thao tác thông thường: Di chuyển vào Thùng rác (trashItem)
-         └── Nếu gặp lỗi phân quyền: Kích hoạt fallback quyền Admin (rm -rf tệp đã chọn)
-         │
-         ▼
-  [ Cập nhật danh sách & Thông báo dung lượng thu hồi ]
-```
+`main_visible → background → main_visible`; `main_visible|background → quitting → exited`.
 
----
-
-## 4. Luồng Phân tích Dung lượng Space Lens (Space Lens Flow)
-
-```text
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                          SPACE LENS INTERACTION FLOW                                   │
-└────────────────────────────────────────────────────────────────────────────────────────┘
-
-  [ 1. Chọn Phạm vi Quét (Target Selector) ]
-         │
-         ├── Tùy chọn 1: Thư mục cá nhân (Home: ~/)
-         ├── Tùy chọn 2: Thư mục Tải về (Downloads: ~/Downloads)
-         ├── Tùy chọn 3: Toàn bộ ổ đĩa chính (/System/Volumes/Data)
-         └── Tùy chọn 4: Tự chọn thư mục bất kỳ (Custom Directory Picker)
-         │
-         ▼
-  [ 2. Quét Đệ quy & Tính toán Phân cấp ]
-         │
-         ├── Phân bổ dung lượng theo luồng nền (Background Concurrent Queue)
-         ├── Bỏ qua các file < 1MB để tối ưu bộ nhớ heap
-         └── Xây dựng cấu trúc cây SpaceLensNode (name, path, size, children, is_dir)
-         │
-         ▼
-  [ 3. Trực quan hóa Đa chế độ (Dual-View Representation) ]
-         │
-         ├── Khung nhìn Trực quan (Bubble Map / Treemap): Các khối kích thước tỉ lệ thuận với dung lượng
-         └── Khung nhìn Bảng (Table Tree): Phân cấp thư mục, sắp xếp từ lớn nhất đến nhỏ nhất
-         │
-         ▼
-  [ 4. Đi sâu vào Thư mục Con (Drill-Down Navigation) ]
-         │
-         ├── Click đúp vào một thư mục lớn ──► Cây thu phóng vào thư mục đó, cập nhật Breadcrumb
-         └── Click vào Breadcrumb phía trên ──► Quay lại thư mục cấp cha tức thì
-         │
-         ▼
-  [ 5. Thao tác với Tệp nặng (Triage & Purge) ]
-         │
-         ├── Xem trước tệp (Quick Look / Spacebar)
-         ├── Mở trong Finder (Reveal in Finder)
-         └── Xóa an toàn: Di chuyển tệp đã chọn vào Thùng rác (trashItem)
-```
-
----
-
-## 5. Luồng Vòng đời Cửa sổ & Menu Bar (Window & Menu Bar Lifecycle)
-
-```text
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                  WINDOW LIFECYCLE & MENU BAR SAMPLING FLOW                             │
-└────────────────────────────────────────────────────────────────────────────────────────┘
-
-  [ Khởi chạy App ]
-         │
-         ├── macOS ActivationPolicy = .regular (Hiển thị Icon trên Dock)
-         ├── Khởi tạo Icon khay hệ thống (StatusItem trên Menu Bar)
-         └── Mở Cửa sổ chính (Main Dashboard Window)
-         │
-         ▼
-  [ Người dùng bấm Đóng Cửa sổ (Nút X đỏ hoặc Cmd+W) ]
-         │
-         ├── Rust chặn sự kiện hủy tiến trình (Prevent Default Window Destroy)
-         ├── Ẩn Cửa sổ chính: window.hide()
-         ├── Điều chỉnh macOS ActivationPolicy: .regular ──► .accessory
-         │       └── Icon VXClean biến mất khỏi Dock và thanh Cmd+Tab
-         └── App tiếp tục chạy nền nhẹ: Duy trì StatusItem trên Menu Bar
-         │
-         ▼
-  [ Tần suất Lấy mẫu Telemetry (Dynamic Sampling Regulator) ]
-         │
-         ├── Khi Menu Bar Popover ĐANG ĐÓNG:
-         │       └── Tần suất lấy mẫu chậm: 15s - 30s/lần (Không tiêu tốn pin/CPU)
-         │
-         └── Khi Người dùng CLICK MỞ Menu Bar Popover:
-                 ├── Lấy mẫu tức thời (Immediate Refresh)
-                 └── Chuyển sang tần suất nhanh: 2s/lần trong lúc popover đang mở
-         │
-         ▼
-  [ Người dùng muốn Mở lại Cửa sổ Chính ]
-         │
-         ├── Từ Menu Bar Popover: Bấm "Mở VXClean Dashboard"
-         ├── Hoặc từ Spotlight / Launchpad: Mở lại VXClean.app
-         │
-         ├── Điều chỉnh macOS ActivationPolicy: .accessory ──► .regular (Hiện lại trên Dock)
-         └── Hiển thị và Focus Cửa sổ chính: window.show(), window.set_focus()
-         │
-         ▼
-  [ Người dùng Thoát Hoàn toàn Ứng dụng (Explicit Quit) ]
-         │
-         ├── Qua phím tắt: Cmd+Q
-         └── Hoặc qua nút: "Thoát hoàn toàn" (Quit) trong Menu Bar Popover
-                 └── Chấm dứt tiến trình, hủy StatusItem, dọn sạch bộ nhớ cache
-```
+Main close/Cmd+W hide window/panel, accessory activation, Dock biến mất, tray giữ. Tray left click chỉ toggle panel; open-main/launch/reopen show/unminimize/focus main + regular activation, không duplicate instance/window. Tray failure giữ main mở. Cmd+Q/Quit không bị close handler đổi thành hide; shared shutdown stop reads/new mutations, journal/reap children, giữ app-reopen obligations. Sleep/wake không tạo timer backlog.

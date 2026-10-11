@@ -1,113 +1,111 @@
-# QA & Acceptance Specification: VXClean (`_spec5_qa_acceptance`)
+# Acceptance và release-preparation gates VXClean
 
-> **Tên sản phẩm:** VXClean  
-> **Thư mục dự án:** `cleaner_for_mac`  
-> **Mã tài liệu:** `_spec5_qa_acceptance`  
-> **Phiên bản:** 1.0.0  
-> **Ngày cập nhật:** 2026-10-07  
-> **Phạm vi:** Tiêu chí nghiệm thu (Gherkin Syntax), Ma trận trường hợp biên (Edge Cases), và Bộ checklist kiểm thử chất lượng trước phát hành.
+> **Cập nhật implementation local 2026-10-10:** xem [truth sau triển khai](17_local_implementation_status.md) và [báo cáo build/QA](../local_completion_report.md). Nội dung target dưới đây không đồng nghĩa mọi gate đã pass; các nhánh thiếu evidence đang blocked.
 
----
 
-## 1. Tiêu chí Nghiệm thu Tính năng (Acceptance Criteria - Gherkin)
+Version: 2.0.0 — 2026-10-10. Checklist target, chưa đánh pass. [Policy](15_cleanup_protection_policy.md), [menubar](16_menubar_release_ui.md), [scope](14_quick_detailed_scope.md).
 
-### 1.1. Phân hệ Telemetry & Giám sát Hệ thống (Dashboard)
+## Scenarios bắt buộc
 
 ```gherkin
-Kịch bản: Khởi động ứng dụng và đọc chỉ số phần cứng thật
-  Giả sử ứng dụng VXClean vừa được khởi chạy
-  Khi người dùng nhìn vào màn hình Dashboard
-  Thì ứng dụng hiển thị chính xác % CPU sử dụng, phân bổ RAM (Active, Wired, Compressed), và dung lượng đĩa
-  Và số liệu phải khớp với Activity Monitor của macOS với độ lệch không quá ±3%
-  Và nút "Làm mới" bị vô hiệu hóa (disabled) trong 2 giây khi đang lấy mẫu để chống spam request.
+Feature: Quick scope và backend protection
+  Scenario: Quick không quét nhóm chuyên biệt
+    Given fixtures có Node Brew Docker Chrome AI Media và ba nhóm Quick
+    When user chạy Quick rồi revalidate các target Quick
+    Then chỉ System Junk User Cache Large Files scanners được gọi
+    And không CLI chuyên biệt nào chạy
+    And dedicated roots không xuất hiện qua User Cache hoặc parent
 
-Kịch bản: Hiển thị trạng thái nguồn điện trên máy tính Mac không có pin
-  Giả sử ứng dụng đang chạy trên Mac mini, Mac Studio hoặc Mac Pro
-  Khi hệ thống đọc dữ liệu telemetry pin
-  Thì trường "has_battery" trả về false
-  Và giao diện hiển thị nhãn "Nguồn điện AC trực tiếp • Thiết bị để bàn"
-  Và không hiển thị thanh tiến trình 0% hoặc thông báo pin yếu ảo.
+  Scenario: Scanner sai không cấp quyền xóa protected
+    Given scanner/UI trả target chứa updater runtime hoặc OS critical
+    When host/native nhận yêu cầu xóa kể cả Select all
+    Then policy từ chối trước mutation
+    And hash/identity dữ liệu protected giữ nguyên
+
+  Scenario: Child mới dưới parent cùng inode
+    Given directory target đã được scan
+    And một protected child mới được thêm với parent inode không đổi
+    When cleanup bắt đầu
+    Then target trả scope_changed hoặc protected_target
+    And child mới không bị xóa
+
+  Scenario: Không dùng chéo ticket
+    Given ticket quick_cleanup còn hạn
+    When caller đổi scope sang uninstall hoặc detailed_cleanup
+    Then request bị từ chối trước mutation
+
+  Scenario: Dữ liệu lớn cần lựa chọn
+    # Cleanup cache và uninstall app là hai phạm vi riêng.
+    Given file cá nhân vượt threshold trong Documents
+    When Quick hoàn tất và user dọn lựa chọn mặc định
+    Then file mặc định bỏ tick và còn nguyên
+    And chỉ khi explicit chọn và confirm mới được Trash
+
+  Scenario: CapCut cleanup và uninstall có phạm vi khác nhau
+    Given Movies/CapCut chứa cache đã phân loại và project fixture
+    When user scan dọn rác Quick hoặc Detail
+    Then không có target xóa toàn Movies/CapCut
+    And project không được cấp quyền xóa qua parent cache
+    When user scan gỡ CapCut
+    Then Movies/CapCut có thể xuất hiện như dữ liệu liên quan chứa project
+    And target này mặc định bỏ chọn
+    And chỉ ticket uninstall với lựa chọn và xác nhận mất dữ liệu mới được Trash cả folder
+
+  Scenario: App Save Cancel được tôn trọng
+    Given app có unsaved project và cache được chọn cần Quit
+    When app hoặc user hủy Quit
+    Then cache của app đó không mutation
+    And không force quit
+
+  Scenario: Partial operation sau crash
+    Given một target đã mutation và target tiếp theo chỉ có intent
+    When engine/host bị dừng rồi mở lại VXClean
+    Then completed target không tự chạy lại
+    And pending target được reconcile hoặc outcome_unknown
+    And user thấy kết quả và nghĩa vụ reopen app
+
+  Scenario: Retry uninstall residual sau bundle mất
+    Given bundle đã Trash nhưng known residual permission_denied
+    When user explicit cho phép retry admin residual
+    Then ticket remaining association được revalidate
+    And broad discovery không được admin fallback
+
+  Scenario: Orphans đi qua host payload thật
+    Given supported orphan fixture và UUID ticket
+    When Rust tạo request gửi Swift
+    Then identities/scope/version đầy đủ và target hợp lệ được xử lý
+    And payload thiếu identity bị chặn
+
+  Scenario: Main close và Quit khác nhau
+    Given native tray đã initialized và main đang mở
+    When user đóng main
+    Then main ẩn và Dock biến mất nhưng tray còn
+    When user mở main từ tray rồi Cmd+Q
+    Then app thoát và owned timers/children kết thúc có journal
 ```
 
-### 1.2. Phân hệ Smart Scan & Dọn dẹp An toàn (System Cleaner)
+## Edge case matrix
 
-```gherkin
-Kịch bản: Quét hệ thống khi chưa có quyền Full Disk Access
-  Giả sử người dùng chưa cấp quyền Full Disk Access cho VXClean
-  Khi người dùng nhấn "Bắt đầu Smart Scan"
-  Thì hệ thống chỉ quét các thư mục người dùng mở (User Caches, Xcode DerivedData, Trash)
-  Và hiển thị một Banner cảnh báo màu Amber thông báo các thư mục sâu (Mail, Safari) bị bỏ qua
-  Và cung cấp nút mở trực tiếp Cài đặt Hệ thống macOS để cấp quyền.
+| Gate | Kiểm tra | Mong đợi |
+|---|---|---|
+| Paths | symlink/ancestor swap, traversal, alias, hardlink, dot/root/self, protected injection | Refuse ngoài authority, không follow/overwrite/xóa protected |
+| Tickets | expired/wrong scope/method/version, duplicate/replay, stale after mutation | Reject/renew read+review, không tự grant mới |
+| Directory | protected/new child, partial/truncated enumeration, same inode/type change | Không whole-parent wipe |
+| Cache semantics | npm _cacache vs _npx, updater pending, DB/WAL, projects/model/site offline | Exact cache removed; protected hashes unchanged |
+| Logs/temp | fresh/open temp, active/recent/latest log, 29/30/31 ngày | No active deletion; age alone không đủ proof |
+| Lifecycle | shared Adobe helpers/export, cache build busy, app restart, Save/Cancel/timeout | Wait/skip; no vendor-wide kill/false restore |
+| Chrome | 2 profiles, pinned/grouped/tab/windows, startup không Continue where left off | Regular sessions restored; incognito/forms excluded |
+| Operations | cancel/host Quit/child timeout/crash at intent/outcome boundary | Durable partial/interrupted, no auto replay |
+| Detail | category/global Select all, risky supported vs disabled, overlapping paths | Đúng lựa chọn, hậu quả đầy đủ, dedup bytes/mutation |
+| Menubar | 1x/2x light/dark, monitor edge, keyboard, stale/error/no battery, sleep/wake | SVG thật/template, panel clamp, no duplicate sample/listeners |
+| Artifact | packaged engine vs source hashes, native UI no mock, version/platform matrix | Evidence đúng gói, không chỉ debug binary local |
 
-Kịch bản: Dọn dẹp tệp với xác nhận chính sách an toàn
-  Giả sử quá trình quét hoàn tất và phát hiện 12.4 GB tệp rác
-  Khi người dùng bấm nút "Dọn dẹp"
-  Thì một hộp thoại xác nhận bắt buộc xuất hiện
-  Và hộp thoại phân tách rõ ràng: tệp nào sẽ bị xóa vĩnh viễn (direct removeItem) và tệp nào chuyển vào Thùng rác
-  Khi người dùng bấm "Xác nhận dọn dẹp"
-  Thì tiến trình dọn dẹp bắt đầu và cập nhật dung lượng đã giải phóng theo thời gian thực.
-```
+## Checks và bằng chứng bàn giao
 
-### 1.3. Phân hệ Gỡ cài đặt Ứng dụng (App Uninstaller)
+Rerun meaningful tests hiện có: native maintenance (11 nhóm baseline), Rust lib (6 baseline), retention, uninstall selection, circle packing và TypeScript/build. Bổ sung tests policy/host-native producer, scopes, journal và lifecycle mới; pass baseline không thay coverage mới. Không khóa assertion vào behavior nguy hiểm chỉ để regression xanh.
 
-```gherkin
-Kịch bản: Bảo vệ ứng dụng hệ thống và ứng dụng tự thân
-  Giả sử danh sách ứng dụng đã quét xong
-  Khi người dùng tìm kiếm "Safari" hoặc "VXClean"
-  Thì nút checkbox chọn gỡ cài đặt bị khóa (disabled)
-  Và ứng dụng Safari hiển thị nhãn "Bảo vệ hệ thống (SIP Locked)"
-  Và ứng dụng VXClean hiển thị nhãn "Ứng dụng tự thân (Protected)"
-  Và không có cách nào kích hoạt lệnh gỡ các ứng dụng này qua giao diện.
+Dùng fixture user data tự tạo/temporary home, không dọn máy thật. Native Trash cần test với fixture có quyền hợp lệ; sandbox permission-denied chỉ chứng minh failure handling. Real GUI/package: Quick/Detail selections, dictionary/default, uninstall retry, Lens, head bar bỏ Bản thử, tray/Dock/Quit, stale/sleep và app Quit/restore. Không dùng build thành visual/runtime pass.
 
-Kịch bản: Gỡ cài đặt ứng dụng bên thứ ba thông thường
-  Giả sử người dùng chọn gỡ cài đặt ứng dụng "Docker Desktop"
-  Khi người dùng xác nhận thao tác gỡ
-  Thì file "Docker.app" và các tệp trong "~/Library/Application Support" được chuyển vào Thùng rác (trashItem)
-  Và người dùng có thể mở Thùng rác để khôi phục (Put Back) nếu muốn.
-```
+Báo cáo lưu artifact/version/hash/OS/architecture, pass/fail/untested từng gate và remaining disabled branches. OS/application/layout chưa test → support hạn chế, không copy mutation rule sang Windows. Nếu Chrome restore hoặc adapter chưa đạt, ghi rõ blocker và giữ mutation blocked; không âm thầm hạ yêu cầu thành launch-only.
 
-### 1.4. Phân hệ Vòng đời Cửa sổ & Menu Bar (Window & Dock Lifecycle)
-
-```gherkin
-Kịch bản: Đóng cửa sổ chính bằng nút đỏ hoặc Cmd+W
-  Giả sử cửa sổ chính của VXClean đang mở và hiển thị icon trên thanh Dock
-  Khi người dùng bấm nút đỏ (X) hoặc nhấn tổ hợp phím Cmd+W
-  Thì cửa sổ chính bị ẩn đi (window.hide)
-  Và icon VXClean trên thanh Dock biến mất (ActivationPolicy = .accessory)
-  Và biểu tượng VXClean trên Menu Bar vẫn tiếp tục hoạt động.
-
-Kịch bản: Mở lại cửa sổ chính từ Menu Bar
-  Giả sử cửa sổ chính đang ẩn và icon trên Dock không xuất hiện
-  Khi người dùng click vào icon Menu Bar và chọn "Mở VXClean Dashboard"
-  Thì cửa sổ chính xuất hiện và nhận tiêu điểm (focus)
-  Và icon VXClean xuất hiện trở lại trên thanh Dock (ActivationPolicy = .regular).
-
-Kịch bản: Thoát hoàn toàn ứng dụng (Explicit Quit)
-  Giả sử ứng dụng đang chạy
-  Khi người dùng nhấn Cmd+Q hoặc bấm "Thoát hoàn toàn" trong Menu Bar
-  Thì toàn bộ tiến trình ứng dụng và các subprocess liên quan đều kết thúc hoàn toàn.
-```
-
----
-
-## 2. Ma trận Trường hợp Biên (Edge Cases Matrix)
-
-| STT | Trường hợp biên (Edge Case) | Hành vi kỳ vọng của Hệ thống | Trạng thái Pass/Fail |
-| :--- | :--- | :--- | :--- |
-| **01** | Tệp đang được ứng dụng khác mở khóa ghi (File in-use / locked) khi dọn rác | Bỏ qua tệp đó an toàn, không làm treo app; báo lỗi chi tiết trong báo cáo tổng kết và tiếp tục dọn các file còn lại. | **Bắt buộc** |
-| **02** | Xcode đang mở và đang build khi người dùng dọn `DerivedData` | Gửi tín hiệu cảnh báo hoặc bỏ qua các thư mục module cache đang bị lock để tránh làm hỏng tiến trình build hiện tại. | **Bắt buộc** |
-| **03** | Thư mục `~/.Trash` đang trống khi bấm làm rỗng | Hiển thị nhãn "Thùng rác đã trống (0 B)", nút làm rỗng bị vô hiệu hóa mờ đi. | **Bắt buộc** |
-| **04** | Người dùng thu hồi quyền FDA giữa chừng khi app đang chạy | Lần quét tiếp theo phát hiện lỗi quyền, hạ cấp xuống quét bình thường và hiển thị lại banner cảnh báo. | **Bắt buộc** |
-| **05** | Máy Mac bị mất kết nối mạng Internet | Toàn bộ tính năng quét, dọn dẹp, Space Lens và telemetry hoạt động 100% offline, không gửi bất kỳ gói tin mạng nào ra ngoài. | **Bắt buộc** |
-| **06** | Thư mục quét Space Lens có ký tự Unicode phức tạp hoặc Emoji | Đường dẫn UTF-8 được xử lý chuẩn xác, không bị lỗi escape hoặc phân rã ký tự (NFC/NFD). | **Bắt buộc** |
-| **07** | Người dùng nhập sai mật khẩu xác thực quyền Admin nhiều lần | Không crash app; dừng lệnh dọn đặc quyền và thông báo "Xác thực không thành công. Các tệp yêu cầu quyền quản trị bị bỏ qua". | **Bắt buộc** |
-
----
-
-## 3. Danh mục Kiểm định Chất lượng (QA Verification Checklist)
-
-- [ ] **Bảo mật & Quyền riêng tư:** Xác nhận 0 request mạng ra bên ngoài; mã nguồn tuân thủ cam kết không thu thập dữ liệu cá nhân.
-- [ ] **Tuân thủ Đối soát Xóa tệp (`safety_audit.md`):** Kiểm tra các điểm gọi `removeItem`, `trashItem` và `cleanWithAdminPrivileges` đúng 100% theo ma trận.
-- [ ] **Theme & Giao diện:** Kiểm tra màu nền `#0f1117`, card `#141821`, màu nhấn Cyan `#06b6d4`, không bị vỡ font tiếng Việt.
-- [ ] **Hiệu năng & Tiết kiệm Pin:** Đảm bảo khi đóng popover Menu Bar, mức tiêu thụ CPU của app ở trạng thái nền `< 0.3%`.
-- [ ] **Bộ cài đặt & Ký số (Code Signature):** Kiểm tra entitlements macOS, cờ `HARDENED_RUNTIME`, và quyền truy cập Full Disk Access.
+Chuẩn bị release không đồng nghĩa được publish. Không ghi all-ready khi P1 policy/data loss hoặc partial reporting còn fail; không công bố auto-update/signing/Win QA khi chưa làm task đó.

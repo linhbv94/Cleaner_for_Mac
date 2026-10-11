@@ -1,20 +1,19 @@
 import React from 'react';
 import { SystemSnapshot, BatteryMetrics } from '../types';
-import { Cpu, HardDrive, Battery, RefreshCw, Layers } from 'lucide-react';
+import { Cpu, HardDrive, Battery, RefreshCw, Layers, Sparkles } from 'lucide-react';
+import { PageHeader } from './page_header';
+import { formatBytes } from '../services/byte_format';
 
 interface DashboardProps {
   snapshot: SystemSnapshot | null;
   isLoading: boolean;
   error: string | null;
   onRefresh: () => void;
+  onStartQuickScan: () => void;
   isBrowserPreview: boolean;
 }
 
-const fmt = (bytes: number): string => {
-  if (bytes <= 0) return '0 B';
-  const gb = bytes / (1024 * 1024 * 1024);
-  return gb >= 1 ? `${gb.toFixed(1)} GB` : `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
-};
+const fmt = formatBytes;
 
 const getBatteryStatus = (b: BatteryMetrics): string => {
   if (!b.has_battery) return 'Không có pin';
@@ -24,24 +23,38 @@ const getBatteryStatus = (b: BatteryMetrics): string => {
   return 'Đang dùng pin';
 };
 
-export const Dashboard: React.FC<DashboardProps> = ({ snapshot, isLoading, error, onRefresh, isBrowserPreview }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ snapshot, isLoading, error, onRefresh, onStartQuickScan, isBrowserPreview }) => {
   const m = snapshot?.metrics;
   const cpuPct = m ? (m.cpu.usage > 1 ? m.cpu.usage : m.cpu.usage * 100) : 0;
 
   return (
-    <div className="flex-1 p-5 overflow-y-auto space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-base font-bold text-slate-900 dark:text-slate-100">Tổng quan Hệ thống</h1>
-          {snapshot && <p className="text-[11px] text-slate-400 font-mono mt-0.5">Lấy mẫu: {new Date(snapshot.timestamp).toLocaleTimeString()}</p>}
-        </div>
-        {!isBrowserPreview && (
-          <button type="button" onClick={onRefresh} disabled={isLoading} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/15 transition-colors cursor-pointer disabled:opacity-50">
-            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-            <span>Làm mới</span>
-          </button>
-        )}
-      </div>
+    <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50 dark:bg-[#0f1117] text-slate-800 dark:text-slate-100">
+      <PageHeader
+        icon={HardDrive}
+        iconBgClass="bg-cyan-500/10 border-cyan-500/30"
+        iconColorClass="text-cyan-600 dark:text-cyan-400"
+        title="Tổng quan Hệ thống"
+        subtitle={
+          snapshot
+            ? `Lấy mẫu: ${new Date(snapshot.timestamp).toLocaleTimeString()}`
+            : 'Giám sát chỉ số tài nguyên và hiệu năng phần cứng máy Mac'
+        }
+        actions={
+          !isBrowserPreview ? (
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={isLoading}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-300 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-600 bg-slate-100/50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+              <span>Làm mới</span>
+            </button>
+          ) : undefined
+        }
+      />
+
+      <div className="flex-1 p-5 overflow-y-auto space-y-5">
 
       {isBrowserPreview && (
         <div className="p-4 rounded-xl glass-card border border-amber-500/20 text-xs text-amber-600 dark:text-amber-400 text-center">
@@ -110,6 +123,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ snapshot, isLoading, error
           </div>
         </div>
       )}
+
+      <div className="flex flex-col items-center justify-center pt-4 pb-6">
+        <div className="relative group">
+          <div className="absolute inset-0 bg-cyan-500/20 dark:bg-cyan-500/30 rounded-full blur-2xl transition-all duration-300 group-hover:scale-110 group-hover:bg-cyan-500/40" />
+          <button
+            type="button"
+            onClick={onStartQuickScan}
+            className="relative w-36 h-36 rounded-full bg-gradient-to-tr from-cyan-600 via-cyan-500 to-cyan-400 text-white shadow-xl shadow-cyan-500/25 flex flex-col items-center justify-center gap-2 transition-all duration-200 hover:scale-105 active:scale-95 cursor-pointer ring-4 ring-cyan-400/20 hover:ring-cyan-400/40"
+          >
+            <Sparkles className="w-8 h-8 text-white drop-shadow-md animate-pulse" />
+            <span className="text-xs font-bold tracking-wider uppercase drop-shadow-sm">
+              Quét nhanh
+            </span>
+          </button>
+        </div>
+        <p className="text-xs text-slate-500 dark:text-slate-400 mt-3 text-center max-w-sm">
+          Nhấp một lần để chuyển sang Quét nhanh và tự động phân tích toàn diện hệ thống
+        </p>
+      </div>
     </div>
-  );
+  </div>
+);
 };

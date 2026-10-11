@@ -1,15 +1,122 @@
+mod journal_history;
 pub mod engine_bridge;
 pub mod models;
+pub mod maintenance_bridge;
+pub mod menubar;
 
 pub use engine_bridge::*;
 pub use models::*;
+use tauri::Emitter;
+#[cfg(target_os = "macos")]
+use tauri::menu::{AboutMetadataBuilder, MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 
 pub fn run() {
-    tauri::Builder::default()
+    let builder=tauri::Builder::default();
+    #[cfg(target_os="macos")]
+    let builder=builder.plugin(tauri_plugin_single_instance::init(|app,_,_| { let _=menubar::open_main(app,"open"); }));
+    builder
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(maintenance_bridge::EngineState::default())
+        .manage(engine_bridge::MetricsService::default())
+        .manage(menubar::MenubarState::default())
+        .setup(|app| {
+            #[cfg(target_os = "macos")]
+            {
+                let about_metadata = AboutMetadataBuilder::new()
+                    .name(Some("VXClean"))
+                    .version(Some(env!("CARGO_PKG_VERSION")))
+                    .copyright(Some("by Viet Linh Bui"))
+                    .authors(Some(vec!["Viet Linh Bui".into()]))
+                    .comments(Some("Tiện ích giám sát tài nguyên CPU, RAM, Disk siêu nhẹ"))
+                    .build();
+
+                let settings_item = MenuItemBuilder::with_id("open_settings", "Cài đặt...")
+                    .accelerator("CmdOrCtrl+,")
+                    .build(app)?;
+
+                let app_submenu = SubmenuBuilder::new(app, "VXClean")
+                    .about(Some(about_metadata))
+                    .separator()
+                    .item(&settings_item)
+                    .separator()
+                    .services()
+                    .separator()
+                    .hide()
+                    .hide_others()
+                    .show_all()
+                    .separator()
+                    .quit()
+                    .build()?;
+
+                let refresh_item = MenuItemBuilder::with_id("refresh_data", "Làm mới dữ liệu")
+                    .accelerator("CmdOrCtrl+R")
+                    .build(app)?;
+
+                let file_submenu = SubmenuBuilder::new(app, "Tệp")
+                    .item(&refresh_item)
+                    .separator()
+                    .close_window()
+                    .build()?;
+
+                let toggle_theme_item = MenuItemBuilder::with_id("toggle_theme", "Chuyển giao diện sáng/tối")
+                    .build(app)?;
+
+                let resource_panel_item = MenuItemBuilder::with_id("resource_panel", "Bảng tài nguyên (menubar)").build(app)?;
+                let view_submenu = SubmenuBuilder::new(app, "Xem")
+                    .item(&resource_panel_item)
+                    .item(&toggle_theme_item)
+                    .build()?;
+
+                let menu = MenuBuilder::new(app)
+                    .item(&app_submenu)
+                    .item(&file_submenu)
+                    .item(&view_submenu)
+                    .build()?;
+
+                let _ = app.set_menu(menu);
+            }
+
+            #[cfg(target_os = "windows")]
+            {
+                use tauri::Manager;
+                if let Some(main_win) = app.get_webview_window("main") {
+                    let _ = main_win.set_decorations(false);
+                }
+            }
+            if let Err(error)=menubar::setup(app){eprintln!("Menubar initialization failed: {error}");}
+            Ok(())
+        })
+        .on_window_event(menubar::window_event)
+        .on_menu_event(|app_handle, event| match event.id().as_ref() {
+            "refresh_data" => {
+                let _ = app_handle.emit("trigger-refresh", ());
+            }
+            "open_settings" => {
+                let _ = app_handle.emit("trigger-open-settings", ());
+            }
+            "resource_panel" => { menubar::show_panel(app_handle); }
+            "toggle_theme" => {
+                let _ = app_handle.emit("trigger-toggle-theme", ());
+            }
+            _ => {}
+        })
         .invoke_handler(tauri::generate_handler![
+            maintenance_bridge::prepare_for_update, maintenance_bridge::resume_after_update_error, maintenance_bridge::restart_after_update, menubar::menubar_action, maintenance_bridge::prepare_cleanup_apps, maintenance_bridge::finish_cleanup_apps, maintenance_bridge::get_operation_status, maintenance_bridge::get_operation_history,
             engine_bridge::get_capabilities,
             engine_bridge::get_system_snapshot,
+            maintenance_bridge::start_scan, maintenance_bridge::cancel_scan,
+            maintenance_bridge::clean_items, maintenance_bridge::get_installed_apps,
+            maintenance_bridge::uninstall_app, maintenance_bridge::get_orphans,
+            maintenance_bridge::trash_lens_item, maintenance_bridge::clean_orphans, maintenance_bridge::analyze_space_lens,
+            maintenance_bridge::choose_scan_folder, maintenance_bridge::open_full_disk_access_settings,
+            maintenance_bridge::reveal_in_file_manager, maintenance_bridge::open_in_terminal,
         ])
-        .run(tauri::generate_context!())
-        .expect("Lỗi khi khởi chạy ứng dụng Tauri VXClean");
+        .build(tauri::generate_context!())
+        .expect("Lỗi khi khởi chạy ứng dụng Tauri VXClean")
+        .run(|app,event|match event {
+            tauri::RunEvent::ExitRequested{code:None,api,..}=>{api.prevent_exit();menubar::quit(app);},
+            #[cfg(target_os="macos")]
+            tauri::RunEvent::Reopen{..}=>{let _=menubar::open_main(app,"open");},
+            _=>{}
+        });
 }

@@ -1,231 +1,65 @@
-# API & Data Contract Specification: VXClean (`_spec4_api_data`)
+# IPC và native data contract VXClean
 
-> **Tên sản phẩm:** VXClean  
-> **Thư mục dự án:** `cleaner_for_mac`  
-> **Mã tài liệu:** `_spec4_api_data`  
-> **Phiên bản:** 1.0.0  
-> **Ngày cập nhật:** 2026-10-07  
-> **Phạm vi:** Khế ước giao tiếp IPC Tauri 2, định nghĩa kiểu dữ liệu TypeScript & Rust DTO, và JSON Schema tương tác với Native Engine.
+> **Cập nhật implementation local 2026-10-10:** xem [truth sau triển khai](17_local_implementation_status.md) và [báo cáo build/QA](../local_completion_report.md). Nội dung target dưới đây không đồng nghĩa mọi gate đã pass; các nhánh thiếu evidence đang blocked.
 
----
 
-## 1. Khế ước Lệnh IPC Tauri (Tauri IPC Commands)
+Version: 2.0.0 — 2026-10-10. Baseline theo source [13](13_engine_behavior_truth.md); target bảo vệ theo [15](15_cleanup_protection_policy.md). DTO target chưa triển khai, không ghi đồng bộ 100% với source. Metrics giữ 1.0; maintenance target 2.0.
 
-Tầng Frontend giao tiếp với Rust Core thông qua các lệnh Tauri `invoke`:
+## Baseline đang callable
 
-```typescript
-// Các hàm invoke khả dụng trên Frontend:
-invoke<CapabilitiesResponse>("get_capabilities");
-invoke<SystemSnapshotResponse>("get_system_snapshot");
-invoke<ScanResponse>("start_scan", { options: ScanOptions });
-invoke<CleanResponse>("execute_clean", { payload: CleanPayload });
-invoke<AppsListResponse>("get_installed_apps", { filter: AppFilterOptions });
-invoke<SpaceLensResponse>("analyze_space_lens", { path: string, maxDepth?: number });
-```
+JS invoke argument keys theo Tauri camelCase; JSON payload bên trong snake_case. Source chuẩn hiện có: [TypeScript](../../desktop/src/types.ts), [frontend bridge](../../desktop/src/services/tauri_bridge.ts), [Rust](../../desktop/src_tauri/src/maintenance_bridge.rs), [Swift](../../desktop/native/maintenance_cli.swift).
 
----
+| Command | Baseline arguments/return |
+|---|---|
+| get_capabilities | Không args; platform/native/feature flags, menu_bar_monitor hiện false |
+| get_system_snapshot | Không args; protocol_version 1.0, platform, timestamp, CPU/RAM/Disk/Battery metrics |
+| start_scan | operationId, includeEmpty; hiện scan all 10 nhóm, chưa scope filter |
+| cancel_scan | operationId; đọc scan/lens registered, chưa mutation cancellation |
+| clean_items | payload scan_id/targets path+method/confirm_direct_delete, operationId |
+| get_installed_apps | Không args; app metadata/known/discovered associated paths |
+| uninstall_app | payload app_id/selected_paths/allow_admin_fallback; baseline chưa có operationId ở IPC |
+| get_orphans | Không args; heuristic groups/safe flags |
+| clean_orphans | selectedPaths, confirmDirectDelete; host hiện thiếu identity binding |
+| analyze_space_lens | path, operationId; native depth 1/direct children, lens_id/is_partial/can_trash |
+| trash_lens_item | lensId, path; grant riêng, Trash |
+| choose_scan_folder | Không args; path hoặc null |
+| reveal_in_file_manager, open_in_terminal | path |
+| open_full_disk_access_settings | Không args; mở System Settings, không tự cấp quyền |
 
-## 2. Định nghĩa DTO & TypeScript Interfaces
+Clipboard qua JS API, không command copy_to_clipboard. Không gọi execute_clean/trash_space_lens_items từ spec cũ.
 
-### 2.1. Phản hồi Năng lực Hệ thống (`get_capabilities`)
+## Target scan và rule DTO
 
-```typescript
-export interface CapabilitiesResponse {
-  protocol_version: "1.0";
-  platform: "macos" | "windows";
-  architecture: "arm64" | "x86_64";
-  os_version: string;
-  has_full_disk_access: boolean;
-  capabilities: {
-    telemetry: boolean;
-    smart_scan: boolean;
-    system_clean: boolean;
-    app_uninstaller: boolean;
-    orphan_scan: boolean;
-    space_lens: boolean;
-    menu_bar_monitor: boolean;
-  };
-}
-```
+start_scan bổ sung `scanMode: quick|detailed`, giữ operationId; Quick backend fixed categories system_junk/user_caches/large_files, không nhận arbitrary category để mở scope. Detail có category filter được backend validation trong allowed group list và includeEmpty phù hợp. Revalidation phải theo scope ticket, không scan all làm phát sinh CLI chuyên biệt.
 
-### 2.2. Dữ liệu Giám sát Hệ thống (`get_system_snapshot`)
+Response maintenance typed envelope: protocol_version 2.0, platform, policy_version, dictionary_version, operation_scope, operation_id và data. Scan data có ticket_id/scan_id, expires_at, categories, is_partial/limited_paths/unsupported_cache_paths, size_kind/estimates. Các key của DTO native snake_case; missing/invalid version/type/platform không cấp grant.
 
-```typescript
-export interface SystemSnapshotResponse {
-  protocol_version: "1.0";
-  platform: "macos";
-  timestamp: number; // Unix timestamp tính bằng giây
-  cpu: {
-    usage_percent: number;      // 0.0 - 100.0%
-    user_percent: number;
-    system_percent: number;
-    idle_percent: number;
-    core_count: number;
-    history: number[];          // Mảng 10 - 20 điểm mẫu gần nhất phục vụ vẽ sparkline
-  };
-  ram: {
-    total_bytes: number;
-    used_bytes: number;
-    free_bytes: number;
-    active_bytes: number;
-    wired_bytes: number;
-    compressed_bytes: number;
-    pressure_level: "normal" | "warning" | "critical";
-  };
-  disk: {
-    total_bytes: number;
-    free_bytes: number;
-    used_bytes: number;
-    available_bytes: number;    // Bao gồm purgeable
-    purgeable_bytes: number;
-    mount_point: string;        // Mặc định: "/"
-  };
-  battery: {
-    has_battery: boolean;       // false đối với Mac mini, Mac Studio, Mac Pro, iMac
-    percentage?: number;        // 0 - 100
-    is_charging?: boolean;
-    power_watts?: number;       // Công suất sạc/tiêu thụ (W)
-    cycle_count?: number;
-    health_percent?: number;
-  };
-}
-```
+JunkItem baseline được mở rộng theo spec 15: target_id/rule_id/operation_scope/effective_safety/can_delete/blocked_reason/requires_app_quit/default_selection_reason/conditions/size_kind/is_partial. Category thêm chrome/media_apps. Các hard block không cleanable; app Quit precondition không bị nhầm hard block.
 
-### 2.3. Dữ liệu Kết quả Quét Rác (`start_scan`)
+Ticket và identities do host tạo từ typed validated scan; native independently classifies policy. frontend không gửi safety/protected proof được tin cậy. Dictionary design_only không grant quyền; executable registry version/layout/evidence quyết định effective fields.
 
-```typescript
-export type JunkCategoryType = 
-  | "user_caches" 
-  | "system_logs" 
-  | "xcode_derived_data" 
-  | "mail_downloads" 
-  | "trash_bin" 
-  | "orphan_residues";
+## Target mutation và recovery
 
-export interface JunkItem {
-  id: string;
-  path: string;
-  name: string;
-  size_bytes: number;
-  category: JunkCategoryType;
-  requires_admin: boolean;
-  deletion_method: "trash" | "remove_item" | "admin_shell";
-  is_selected_by_default: boolean;
-}
+clean_items target payload: ticket_id, operation_scope, target_ids, operation_id, confirm_direct_delete, confirmed_risk_target_ids. Rust và native verify scope/version/method, unique target IDs, limits và owned window before mutation. Admin_shell không là method frontend có thể chọn. Nếu giữ compatibility path payload, bắt buộc map exact granted target, không auto-grant.
 
-export interface ScanCategorySummary {
-  category: JunkCategoryType;
-  title: string;
-  description: string;
-  total_bytes: number;
-  item_count: number;
-  items: JunkItem[];
-}
+Orphan/Uninstall/Lens UUID ticket riêng, cùng identity/invariant framework. Uninstall ticket lưu association/remaining targets để retry sau bundle mất; broad discovery vẫn no-admin. Orphans sửa host-native missing stamps và tests producer thật. Lens read grant không mutation root.
 
-export interface ScanResponse {
-  scan_id: string;
-  duration_ms: number;
-  total_cleanable_bytes: number;
-  categories: ScanCategorySummary[];
-  fda_limited_categories: JunkCategoryType[]; // Các nhóm bị bỏ qua do thiếu quyền
-}
-```
+Progress theo operation_id và target_id, stage/outcome; cancellation mutation hợp tác ở boundary. Durable journal giữ intent/outcome/reopen obligations, query operation status sau timeout/restart; không auto replay deletion. Method/result per target, error enum theo [contract JSON](../cleanup_protection_contract.json); interrupted/outcome_unknown không success giả.
 
-### 2.4. Khế ước Yêu cầu Dọn dẹp (`execute_clean`)
+Byte counters phân biệt estimated_removed_bytes, trashed_bytes, size_kind/partial. Legacy permanently_freed_bytes nếu giữ là removed estimate; không physical free-space proof. Không đếm informational Docker reclaimable vào removable totals.
 
-```typescript
-export interface CleanPayload {
-  scan_id: string;
-  item_ids: string[]; // Danh sách ID tệp được người dùng chọn dọn dẹp
-  confirm_direct_delete: boolean; // Bắt buộc true để xác nhận hiểu chính sách xóa
-}
+## CLI và timeout
 
-export interface CleanFileResult {
-  path: string;
-  status: "success" | "skipped" | "permission_denied" | "file_in_use";
-  freed_bytes: number;
-  error_message?: string;
-}
+| Luồng | Baseline | Target |
+|---|---|---|
+| Metrics | metrics, typed 1.0, timeout 6 giây | Shared service/single-flight, semantics giữ |
+| Maintenance read/mutation | argv cố định, stdin JSON, timeout 120 giây | Typed 2.0, scope explicit, cancellation/journal/recovery, timeout có thể partial |
+| Scan | scan --all, optional --include-empty | Thêm scope/mode parser (ví dụ --scope quick_cleanup); Quick không --all |
+| Cleanup | clean --stdin | Same entry point, policy mandatory/ticket scope/target IDs verified |
+| Apps/Orphans/Lens | Separate commands hiện có | Separate ticket/operation, no policy bypass |
 
-export interface CleanResponse {
-  total_freed_bytes: number;
-  success_count: number;
-  failure_count: number;
-  duration_ms: number;
-  details: CleanFileResult[];
-}
-```
+Giới hạn hiện có stdout 32 MiB, stdin Swift 4 MiB, target 10.000 cần giữ/validate typed và báo error; không hang pipe, kill/reap own subprocess hữu hạn. Nếu cần đổi timeout vì workload, ghi hằng số mới và test thay vì âm thầm dùng số cũ. Host shutdown không để owned engine tiếp tục mutation.
 
-### 2.5. Khế ước Dữ liệu Gỡ Cài đặt Ứng dụng (`get_installed_apps`)
+## Menubar
 
-```typescript
-export interface AssociatedFile {
-  path: string;
-  file_type: "bundle" | "app_support" | "cache" | "preferences" | "saved_state" | "logs";
-  size_bytes: number;
-  is_essential: boolean; // Nếu là bundle .app thì true
-}
-
-export interface InstalledApp {
-  id: string;
-  name: string;
-  bundle_id: string;
-  version: string;
-  bundle_path: string;
-  icon_path?: string;
-  architectures: ("arm64" | "x86_64")[];
-  total_size_bytes: number;
-  is_system_protected: boolean; // SIP / Apple default -> true (Khóa gỡ)
-  is_self_app: boolean;         // VXClean -> true (Khóa tự gỡ)
-  associated_files: AssociatedFile[];
-}
-
-export interface AppsListResponse {
-  apps: InstalledApp[];
-  total_apps: number;
-}
-```
-
-### 2.6. Khế ước Dữ liệu Space Lens (`analyze_space_lens`)
-
-```typescript
-export interface SpaceLensNode {
-  name: string;
-  path: string;
-  size_bytes: number;
-  is_directory: boolean;
-  children?: SpaceLensNode[];
-  item_count?: number;
-}
-
-export interface SpaceLensResponse {
-  root_path: string;
-  total_analyzed_bytes: number;
-  root_node: SpaceLensNode;
-}
-```
-
----
-
-## 3. Khế ước Giao tiếp Subprocess (`vxclean_engine` CLI)
-
-Rust Host thực thi binary bản địa bằng Command Line với argv định danh:
-
-| Câu lệnh CLI | Tham số (Arguments) | stdout JSON Format | Timeout |
-| :--- | :--- | :--- | :--- |
-| `vxclean_engine metrics` | Không tham số | `SystemSnapshotResponse` | 5000ms |
-| `vxclean_engine scan` | `--all` hoặc `--category <name>` | `ScanResponse` | 30000ms |
-| `vxclean_engine clean` | `--stdin` (Nhận danh sách path qua stdin pipe) | `CleanResponse` | 60000ms |
-| `vxclean_engine apps` | `--include-residuals` | `AppsListResponse` | 20000ms |
-| `vxclean_engine lens` | `--path <dir> --depth <n>` | `SpaceLensResponse` | 45000ms |
-
-### Quy chuẩn Xử lý Lỗi CLI:
-- Nếu subprocess trả về exit code khác 0, toàn bộ nội dung trong `stderr` được Rust bắt lại, đóng gói thành đối tượng lỗi:
-```json
-{
-  "status": "error",
-  "code": "ENGINE_EXECUTION_FAILED",
-  "message": "Nội dung chi tiết từ stderr",
-  "timestamp": 1728302400
-}
-```
+Metrics service host-owned, shared main/panel. Panel chỉ metrics + request open main/navigation/settings/quick scan read; mutation main-only. Capability menu_bar_monitor true chỉ khi native tray setup đạt; secondary window không được grant maintenance mutations. Native menu Quit/reopen phải dùng common lifecycle handler, không frontend-only hide.

@@ -58,3 +58,6 @@ desktop/node_modules/
 desktop/dist/
 desktop/src_tauri/target/
 desktop/native/vxclean_engine
+
+# Local updater signing material
+.release_keys/

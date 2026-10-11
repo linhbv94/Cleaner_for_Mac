@@ -1,0 +1,9 @@
+<!doctype html><html lang="vi"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="menubar.css"><title>VXClean</title></head><body><main>
+<header><strong>VXClean</strong><span id="updated">Đang lấy mẫu…</span></header>
+<section><div class="row"><b>CPU</b><strong id="cpu">—</strong></div><svg viewBox="0 0 300 36" aria-label="Lịch sử CPU"><polyline id="spark" points=""/></svg></section>
+<section><div class="row"><b>RAM</b><strong id="ram">—</strong></div><div class="bar"><i id="ram_bar"></i></div><small id="breakdown">Active · Wired · Compressed</small></section>
+<section><div class="row"><b>Ổ đĩa</b><strong id="disk">—</strong></div><div class="bar"><i id="disk_bar"></i></div><small id="available">Khả dụng: —</small></section>
+<section id="battery_row" hidden><div class="row"><b>Pin</b><strong id="battery">—</strong></div></section>
+<p id="status" role="status">Chưa quét</p><p id="error" role="alert" hidden></p>
+<button class="primary" id="quick">Quét nhanh</button><footer><button id="open">Mở VXClean</button><button id="settings">Cài đặt</button></footer>
+</main><script src="menubar.js"></script></body></html>

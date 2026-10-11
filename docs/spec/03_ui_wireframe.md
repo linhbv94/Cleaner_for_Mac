@@ -1,249 +1,40 @@
-# UI & Wireframe Specification: VXClean (`_spec3_ui_wireframe`)
+# Screen và component contract VXClean
 
-> **Tên sản phẩm:** VXClean  
-> **Thư mục dự án:** `cleaner_for_mac`  
-> **Mã tài liệu:** `_spec3_ui_wireframe`  
-> **Phiên bản:** 1.0.0  
-> **Ngày cập nhật:** 2026-10-07  
-> **Hệ quy chiếu Thiết kế:** Tuân thủ 100% [master_theme.md](../../master_theme.md) của hệ sinh thái zTools (Dark Navy/Slate, Electric Cyan Accent, Glassmorphism, Desktop Compact Density).
+Version: 2.0.0 — 2026-10-10. Target release preparation; [scope](14_quick_detailed_scope.md), [policy](15_cleanup_protection_policy.md), [menubar design](16_menubar_release_ui.md) và [retention](08_scan_retention_ui_polish.md) là chuẩn hiện hành.
 
----
+## Shell và dashboard
 
-## 1. Khung Cấu trúc Tổng thể Cửa sổ (Main Window Shell)
+Giữ theme bộ VX theo [master theme](../../../_summary/master_theme.md): Navy/Slate, Cyan, density desktop hiện có, light/dark, native Mac traffic lights và Windows menu/control branch. Head bar production hiện VXClean, bỏ Bản thử; Browser Preview chỉ browser/mock. Không mở thêm master sidebar mới cho Chrome/Media.
 
-Kích thước mặc định: `960px × 640px` (Tối thiểu: `860px × 540px`). Cửa sổ hỗ trợ kéo thả tự do qua thanh tiêu đề không viền (Frameless Window Drag Region).
+Dashboard giữ CPU/RAM/Disk/Battery từ native, timestamp/error/stale; máy không pin có nhánh no-battery. Refresh single-flight, không debounce quá mức chặn thao tác hoặc nhân đôi sample với tray. Không gọi available disk là junk hoặc promised freed bytes.
 
-```text
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│ [●][●][●]  VXClean — Tiện ích Giám sát & Dọn dẹp macOS         [FDA: Active] [⚙] [✕] │ ◄── Window Titlebar (h-10)
-├───────────────┬────────────────────────────────────────────────────────────────────────┤
-│ ❖ TỔNG QUAN   │                                                                        │
-│  [■] Dashboard│                                                                        │
-│               │                                                                        │
-│ ⚡ DỌN DẸP     │                                                                        │
-│  [◐] SmartScan│                                                                        │
-│  [🧹] Dọn Rác  │                       MAIN CONTENT WORKSPACE                           │
-│  [✕] Gỡ App   │                       (Vùng hiển thị nội dung chính)                   │
-│  [☣] Tệp MồCôi│                                                                        │
-│               │                                                                        │
-│ 🌐 BỘ NHỚ     │                                                                        │
-│  [◉] SpaceLens│                                                                        │
-│               │                                                                        │
-│ ⚙ HỆ THỐNG    │                                                                        │
-│  [🛠] Cài đặt  │                                                                        │
-├───────────────┴────────────────────────────────────────────────────────────────────────┤
-│ v1.0.4 • Apple Silicon (M2 Max) • macOS 15.1 Sequoia               Thu hồi: 0 B        │ ◄── Status Bar (h-7)
-└────────────────────────────────────────────────────────────────────────────────────────┘
-```
+## Quick
 
-### Thông số Thiết kế Shell (Tokens):
-- **Window Base Background:** `bg-[#0f1117]` (Slate/Navy sâu).
-- **Sidebar Background:** `bg-[#141821]/85 backdrop-blur-md border-r border-white/5` (Độ rộng cố định: `w-56`).
-- **Sidebar Item (Default):** `text-slate-400 hover:text-slate-200 hover:bg-white/5 rounded-lg text-xs py-2 px-3`.
-- **Sidebar Item (Active):** `text-cyan-400 bg-cyan-500/15 border-l-2 border-cyan-400 font-medium`.
-- **Traffic Light Controls:** Chuẩn macOS native positioning (`top-3 left-4`).
+- Idle: Quét nhanh, mô tả System Junk/User Cache/Large & Old, không quảng cáo 10 nhóm.
+- Scanning: progress/current path theo operation, cancel; không hiện CLI chuyên biệt.
+- Results: đúng ba nhóm; default safe đã validation, Large Files false. Mỗi row name/size/method/short consequence; protected/unknown disabled và lý do.
+- Dọn selection → review vĩnh viễn/Trash/hậu quả → policy/lifecycle → kết quả từng mục. Nút dọn mặc định không auto chọn Large Files.
 
----
+## Dọn chi tiết
 
-## 2. Màn hình 1: Dashboard (System Telemetry & Health)
+Category list giữ nhóm chung + Chrome, AI, Media, Node, Brew, Xcode, Docker, Mail, Trash. Dictionary giải thích từng dòng, badge tạo lại/mất dữ liệu/chưa xác minh/được bảo vệ; info mở exact scope/conditions/giữ gì. Không đưa internal IDs/schema vào copy user.
 
-Màn hình hiển thị 4 khối chỉ số phần cứng thời gian thực và thẻ gợi ý hành động Smart Scan.
+Checkbox trong nhóm chỉ Chọn tất cả nhóm đang xem. Trang tổng quan có count/bytes/selected của từng nhóm, Dọn các mục đã chọn xuyên nhóm và Chọn tất cả tổng quan tách rõ. Select all có thể chọn risky supported, không protected/informational/unsupported; indeterminate/deselect. Review global nêu mọi nhóm/hậu quả, không âm thầm chọn nhóm ẩn dưới checkbox category.
 
-```text
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│ DASHBOARD HỆ THỐNG                                    [⟳ Làm mới (2s)] [Quét ngay]     │
-├────────────────────────────────────────────────────────────────────────────────────────┤
-│ ┌──────────────────────┐ ┌──────────────────────┐ ┌──────────────────────────────────┐ │
-│ │ CPU (Apple Silicon)  │ │ BỘ NHỚ RAM           │ │ DUNG LƯỢNG Ổ ĐĨA (Macintosh HD)  │ │
-│ │   14.2%              │ │   24.8 GB / 32 GB    │ │   342.5 GB Khả dụng / 994.7 GB   │ │
-│ │ ┌──────────────────┐ │ │ ┌──────────────────┐ │ │ ┌──────────────────────────────┐ │ │
-│ │ │ ▄▅▂ ▂▃▅▆▇        │ │ │ ▓▓▓▓▓▓▓▓▓▓▓▒▒▒░░░░ │ │ │ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▒▒▒▒░░░░░░░ │ │ │
-│ │ └──────────────────┘ │ │ └──────────────────┘ │ │ └──────────────────────────────┘ │ │
-│ │ User: 9.8%  Sys: 4.4%│ │ Active: 14.1G Wired:6.2G│ Used: 652.2G • Purgeable: 18.4G │ │
-│ └──────────────────────┘ └──────────────────────┘ └──────────────────────────────────┘ │
-│                                                                                        │
-│ ┌──────────────────────────────────────────────┐ ┌───────────────────────────────────┐ │
-│ │ NGUỒN ĐIỆN & PIN                             │ │ KHUYẾN NGHỊ THU HỒI DUNG LƯỢNG    │ │
-│ │   86% • Đang sạc (AC Attached)               │ │   Ước tính có thể dọn: ~14.8 GB   │ │
-│ │ Tình trạng: Bình thường (Health 98%)         │ │                                   │ │
-│ │ Chu kỳ sạc: 42 • Công suất: 96W USB-C        │ │ [ Bắt đầu Smart Scan toàn diện ]  │ │
-│ │ *(Trên Mac để bàn: Hiển thị nguồn điện AC)*   │ │                                   │ │
-│ └──────────────────────────────────────────────┘ └───────────────────────────────────┘ │
-└────────────────────────────────────────────────────────────────────────────────────────┘
-```
+Popup Quit: app names, lý do, Đóng và dọn/Bỏ qua app/Hủy. Save/Cancel do app quản; không force quit. Reopen/restore failures tách với cleanup result. In-use row có thể selectable để Quit flow, nhưng hard-block row disabled.
 
-### Chi tiết Khối Pin (Xử lý trường hợp không có pin - Desktop Mac):
-- Khi telemetry trả về `battery.has_battery = false` (Mac Studio, Mac Pro, Mac mini, iMac):
-  - Khối nguồn điện tự động chuyển sang hiển thị: `Nguồn điện AC trực tiếp • Thiết bị để bàn`.
-  - Ẩn thanh phần trăm pin và số chu kỳ sạc, không hiển thị giá trị ảo `0%`.
+## Uninstall, Orphans, Lens
 
----
+Uninstaller giữ inventory/search/sort/associated files; Apple apps có thể bị lọc khỏi inventory, không bắt demo Safari hiện nếu source không emit. Self khóa. Known user-data có cảnh báo; discovered có nhãn Có thể liên quan, lý do, default false; Movies/CapCut nói rõ project/resources. Admin retry modal chỉ remaining known permission-denied targets, không discovery.
 
-## 3. Màn hình 2: Smart Scan (3 Trạng thái Chi tiết)
+Orphans dùng copy Có thể là dư liệu, không tuyên bố xác minh app đã gỡ. Supported volatile chọn thủ công; blocked reason hiện. Giữ nav/entry hiện tại, không cần thêm sidebar master mới.
 
-### 3.1. Trạng thái 1: Sẵn sàng (Idle State)
-Ở trạng thái này, giao diện tập trung vào một nút tròn lớn ở trung tâm để kích hoạt quét nhanh:
+Lens giữ bubble/list renderer, geometry tests, folder chooser, breadcrumb Finder/Terminal/Copy (JS clipboard), depth/drill-down và partial flags. Chỉ can_trash target exact được chọn; quyền scan không là quyền xóa. Không thay UI thành tree cũ >10 MB.
 
-```text
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                                                                                        │
-│                                      ╭─────────╮                                       │
-│                                    │     ⚡    │                                       │
-│                                    │   QUÉT    │  ◄── Nút tròn phát sáng Cyan Glow     │
-│                                    │   NHANH   │      (hover:scale-105 active:scale-95)│
-│                                      ╰─────────╯                                       │
-│                                                                                        │
-│                         Sẵn sàng kiểm tra toàn diện hệ thống                           │
-│     Quét an toàn: Bộ nhớ đệm • Nhật ký ứng dụng • Dữ liệu build Xcode • Thùng rác      │
-│                                                                                        │
-└────────────────────────────────────────────────────────────────────────────────────────┘
-```
+## Menubar, settings và failure states
 
-### 3.2. Trạng thái 2: Đang quét (Scanning Progress State)
-Hiển thị tiến trình dạng vòng tròn kèm danh mục đang xử lý thời gian thực:
+Menubar glyph/user SVG, panel 340 px, CPU/RAM breakdown/Disk/Battery/status, open main/quick-read/settings/quit theo spec 16. Main close ẩn Dock, panel click không bật Dock. Shared metrics sampler.
 
-```text
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                                                                                        │
-│                                      ╭─── 68% ─╮                                       │
-│                                    │  Đang quét│                                       │
-│                                    │  12.4 GB  │                                       │
-│                                      ╰─────────╯                                       │
-│                                                                                        │
-│                          Đang kiểm tra: Xcode DerivedData...                           │
-│               [■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■░░░░░░░░░░░░░░░░]                │
-│                                                                                        │
-│  [✓] Bộ nhớ đệm hệ thống (3.2 GB)             [✓] Nhật ký & Báo cáo lỗi (412 MB)       │
-│  [●] Tệp phát triển Xcode (8.8 GB)...         [○] Thùng rác hệ thống (Chờ duyệt)       │
-│                                                                                        │
-│                                   [ Dừng quét ]                                        │
-└────────────────────────────────────────────────────────────────────────────────────────┘
-```
+Settings hiện theme controls; không trình bày cleaning/scheduler/FDA boolean như đã có nếu chưa nối backend. Quyền chỉ yêu cầu khi operation cần; System Settings user tự cấp. Không mở autostart/autoClean trong task.
 
-### 3.3. Trạng thái 3: Kết quả Quét (Results & Action State)
-Sau khi quét xong, hiển thị bảng phân loại rác và nút bấm dọn dẹp an toàn:
-
-```text
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│ PHÁT HIỆN: 14.82 GB DỮ LIỆU CÓ THỂ DỌN                     [Tất cả] [Bỏ chọn]          │
-├────────────────────────────────────────────────────────────────────────────────────────┤
-│ [✓] 🗄️ BỘ NHỚ ĐỆM NGƯỜI DÙNG (User Caches)                           3.20 GB   [Xem >] │
-│     Bao gồm: Caches Safari, Spotify, Chrome, Slack (Tự động tái tạo khi dùng)          │
-│                                                                                        │
-│ [✓] 🛠️ DỮ LIỆU BUILD XCODE (DerivedData & Archives)                   8.80 GB   [Xem >] │
-│     Bao gồm: Build index, module cache dự án cũ (Không ảnh hưởng source code)          │
-│                                                                                        │
-│ [✓] 📄 NHẬT KÝ HỆ THỐNG & CRASH LOGS                                 412.0 MB   [Xem >] │
-│     Bao gồm: DiagnosticReports, ASL logs cũ hơn 30 ngày                                │
-│                                                                                        │
-│ [✓] 🗑️ THÙNG RÁC HỆ THỐNG (Trash)                                     2.41 GB   [Xem >] │
-│     Bao gồm: 142 tệp đang nằm trong ~/.Trash                                           │
-├────────────────────────────────────────────────────────────────────────────────────────┤
-│ Đã chọn: 14.82 GB • Xóa trực tiếp 12.41 GB, Làm rỗng Thùng rác 2.41 GB                 │
-│                                                              [ Dọn dẹp 14.82 GB ]      │
-└────────────────────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 4. Màn hình 3: App Uninstaller (Gỡ cài đặt Ứng dụng & File Rác)
-
-Bố cục dạng 2 cột (Master-Detail Layout): Cột trái là danh sách ứng dụng; Cột phải là cây phân rã tệp phụ thuộc liên quan.
-
-```text
-┌──────────────────────────────────────┬─────────────────────────────────────────────────┐
-│ TÌM ỨNG DỤNG [🔍 Tìm tên hoặc ID...]  │ CHI TIẾT GỠ CÀI ĐẶT: Docker Desktop             │
-│ Sắp xếp: [Dung lượng giảm dần ▼]     │                                                 │
-├──────────────────────────────────────┼─────────────────────────────────────────────────┤
-│ [✓] 🐳 Docker Desktop        12.4 GB │ [✓] Ứng dụng gốc (.app)                 3.8 GB  │
-│     v4.35 • Apple Silicon            │     /Applications/Docker.app                    │
-│                                      │                                                 │
-│ [ ] 🎨 Figma                   2.1 GB │ [✓] Dữ liệu máy ảo & Container          8.1 GB  │
-│     v116.15 • Apple Silicon          │     ~/Library/Containers/com.docker.docker      │
-│                                      │                                                 │
-│ [ ] 🎧 Spotify                 1.4 GB │ [✓] Bộ nhớ đệm ứng dụng                 480 MB  │
-│     v1.2.40 • Universal              │     ~/Library/Caches/com.docker.docker          │
-│                                      │                                                 │
-│ [🔒] 🧭 Safari                48.0 MB │ [✓] Tệp cấu hình người dùng              24 MB  │
-│     Hệ thống bảo vệ (SIP Locked)     │     ~/Library/Preferences/com.docker.docker.plist│
-│                                      ├─────────────────────────────────────────────────┤
-│                                      │ Cơ chế: Đưa vào Thùng rác (trashItem)           │
-│                                      │ [ Bỏ chọn cấu hình ]     [ Gỡ cài đặt (12.4 GB) ]│
-└──────────────────────────────────────┴─────────────────────────────────────────────────┘
-```
-
----
-
-## 5. Màn hình 4: Space Lens (Phân tích Trực quan Dung lượng)
-
-Cung cấp khả năng điều hướng sâu vào từng thư mục với Breadcrumb và hiển thị phân cấp trực quan:
-
-```text
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│ PHẠM VI: [~ / Users / vic / Projects /] ◄── Breadcrumb Navigation  [Bubble Map] [Bảng] │
-├────────────────────────────────────────────────────────────────────────────────────────┤
-│ ┌──────────────────────────────────────────────┐ ┌───────────────────────────────────┐ │
-│ │ TRỰC QUAN HÓA BUBBLE MAP / TREEMAP           │ │ DANH SÁCH TỆP & THƯ MỤC NẶNG      │ │
-│ │ ┌───────────────────────┬──────────────────┐ │ │                                   │ │
-│ │ │                       │ node_modules     │ │ │ [📁] target/            14.2 GB  │ │
-│ │ │ target/               │ 6.8 GB           │ │ │ [📁] node_modules/       6.8 GB  │ │
-│ │ │ 14.2 GB               ├──────────────────┤ │ │ [📁] .build/             2.4 GB  │ │
-│ │ │                       │ .build/          │ │ │ [📄] backup.tar.gz       1.8 GB  │ │
-│ │ │                       │ 2.4 GB           │ │ │                                   │ │
-│ │ └───────────────────────┴──────────────────┘ │ │ Chi tiết: target/debug/deps       │ │
-│ │                                              │ │ Đường dẫn: .../photo_picker/target│ │
-│ │ Click đúp vào khối để phóng to thư mục con   │ │                                   │ │
-│ └──────────────────────────────────────────────┘ │ [ Mở Finder ]  [ Chuyển vào Trash]│ │
-│                                                  └───────────────────────────────────┘ │
-└────────────────────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 6. Màn hình 5: Menu Bar Popover (Tiện ích Giám sát Khay Hệ thống)
-
-Cửa sổ nhỏ gọn (Kích thước: `320px × 380px`) mở ra khi người dùng click vào biểu tượng VXClean trên Menu Bar:
-
-```text
-┌────────────────────────────────────────┐
-│  VXClean Monitor            [⚙] [✕]    │
-├────────────────────────────────────────┤
-│  CPU           12.4%  [ ▄▅▂ ▂▃  ]     │
-│  RAM (32GB)    78.0%  [▓▓▓▓▓▓▓░░]     │
-│    App: 14.2G • Wired: 6.1G • Free: 7G │
-│                                        │
-│  DISK          65.5%  [▓▓▓▓▓▓░░░]     │
-│    Khả dụng: 342.5 GB (Purgeable: 18G) │
-│                                        │
-│  PIN           86% ⚡ Đang sạc (96W)   │
-│    Thời gian đầy: ~25 phút             │
-├────────────────────────────────────────┤
-│  ⚡ Rác khả dụng: ~14.8 GB              │
-│  [ Quét & Dọn nhanh ]                  │
-├────────────────────────────────────────┤
-│  [ Mở Dashboard chính ]  [ Thoát hẳn ] │
-└────────────────────────────────────────┘
-```
-
----
-
-## 7. Hộp thoại Xác nhận An toàn (Safety Confirmation Modal)
-
-Mọi thao tác dọn dẹp lớn bắt buộc hiển thị hộp thoại xác nhận tuân thủ `safety_audit.md`:
-
-```text
-┌─────────────────────────────────────────────────────────┐
-│ ⚠️ XÁC NHẬN DỌN DẸP DỮ LIỆU                             │
-├─────────────────────────────────────────────────────────┤
-│ Bạn sắp dọn dẹp 14.82 GB dữ liệu đã chọn.               │
-│                                                         │
-│ Chi tiết cơ chế xử lý:                                  │
-│ • 12.41 GB (Caches, Logs, Xcode): Xóa trực tiếp vĩnh viễn│
-│   (Không thể khôi phục từ Thùng rác).                   │
-│ • 2.41 GB (Thùng rác hệ thống): Làm rỗng hoàn toàn.     │
-│                                                         │
-│ [ ] Tôi hiểu rằng các tệp bộ nhớ đệm sẽ bị xóa vĩnh viễn│
-│                                                         │
-│              [ Hủy bỏ ]   [ Xác nhận Dọn dẹp ]          │
-└─────────────────────────────────────────────────────────┘
-```
+Loading, empty, partial, denied, blocked, stale, interrupted và outcome_unknown khác nhau. Native không fallback mock. Results removed estimates/Trash riêng; audit/details đủ cho user biết mục nào thực sự đã xử lý, không hứa Undo direct delete.
