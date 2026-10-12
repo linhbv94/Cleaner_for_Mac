@@ -486,8 +486,8 @@ export const UninstallerView: React.FC = () => {
               <div className="p-4 border-t border-slate-200/80 dark:border-slate-800/80 bg-white/80 dark:bg-[#121622]/80 flex items-center justify-between">
                 <div>
                   {resultMessage ? (
-                    <div className="flex items-center gap-2 text-xs text-emerald-400 font-medium">
-                      <CheckCircle2 size={15} />
+                    <div className={`flex items-center gap-2 text-xs font-medium ${resultMessage.startsWith('Lỗi khi gỡ bỏ:') ? 'text-rose-400' : 'text-emerald-400'}`}>
+                      {resultMessage.startsWith('Lỗi khi gỡ bỏ:') ? <AlertTriangle size={15} /> : <CheckCircle2 size={15} />}
                       {resultMessage}
                     </div>
                   ) : (

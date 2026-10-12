@@ -213,6 +213,8 @@ export interface LensProgressEvent {
 }
 
 export interface SpaceLensNode {
+  children_complete?: boolean;
+  is_partial?: boolean;
   can_trash?: boolean;
   name: string;
   path: string;
@@ -225,6 +227,8 @@ export interface SpaceLensNode {
 }
 
 export interface SpaceLensResponse {
+  scan_root_path?: string;
+  size_kind?: string;
   is_partial?: boolean;
   lens_id?: string;
   root_path: string;

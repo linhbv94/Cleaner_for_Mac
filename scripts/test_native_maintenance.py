@@ -51,7 +51,7 @@ def run_tests():
                 payload.setdefault("operation_id", str(uuid.uuid4()))
                 payload.setdefault("operation_scope", {"clean":"detailed_cleanup", "uninstall":"uninstall", "clean_orphans":"orphan_cleanup", "trash_lens":"lens_trash"}.get(args[0], ""))
                 requested = payload.get("selected_paths", []) + [t["path"] for t in payload.get("targets", [])]
-                payload.setdefault("content_snapshots", {p: manifest(Path(p), root_only=payload.get("operation_scope") == "quick_cleanup" and "/system/" in p or payload.get("operation_scope") == "quick_cleanup" and "/Library/Logs/" in p) for p in requested if Path(p).exists() and not Path(p).is_symlink()})
+                payload.setdefault("content_snapshots", {p: manifest(Path(p), root_only=payload.get("operation_scope") == "uninstall" or payload.get("operation_scope") == "quick_cleanup" and "/system/" in p or payload.get("operation_scope") == "quick_cleanup" and "/Library/Logs/" in p) for p in requested if Path(p).exists() and not Path(p).is_symlink()})
                 payload.setdefault("operation_scope", {"clean":"detailed_cleanup", "uninstall":"uninstall", "clean_orphans":"orphan_cleanup", "trash_lens":"lens_trash"}.get(args[0], ""))
             proc = subprocess.run((["/usr/bin/time","-l"] if measure_memory else [])+[str(binary), *args], input=json.dumps(payload).encode() if payload else None, capture_output=True, env=env, timeout=timeout)
             assert proc.returncode == 0, proc.stderr.decode()
@@ -505,6 +505,8 @@ def run_tests():
         info = app / "Contents/Info.plist"
         info.parent.mkdir(parents=True)
         info.write_bytes(plistlib.dumps({"CFBundleIdentifier": "org.fixture.installed", "CFBundleName": "Fixture", "CFBundlePackageType": "APPL", "CFBundleVersion": "1"}))
+        external_link_target=make(fixture / "external_app_marker",marker)
+        os.symlink(str(external_link_target),str(app / "Contents/external_link"))
         make(app / "Contents/fixture_marker", marker)
         make(fixture / "Library/Caches/org.fixture.installed/file")
         make(fixture / "Library/Containers/org.fixture.installed/file")
@@ -549,7 +551,9 @@ def run_tests():
         proc = subprocess.run([str(binary), "uninstall", "--stdin"], input=json.dumps({"app_id": str(app), "authorized_app": bad, "selected_paths": [str(app)], "allow_admin_fallback": True}).encode(), capture_output=True, env=env, timeout=30)
         assert proc.returncode != 0 and app.exists()
         recycle_fixture(["uninstall", "--stdin"], {"app_id": installed[0]["id"], "authorized_app": installed[0], "selected_paths": [installed[0]["bundle_path"]], "allow_admin_fallback": False, "identities": identities([Path(installed[0]["bundle_path"])])}, app)
+        assert external_link_target.read_bytes()==marker
         checks.append("apps_exact_residual_matching_sip_rejection_and_uninstall")
+        checks.append("uninstall_unit_bundle_does_not_follow_external_symlink")
         for args in [[], ["scan", "--unsafe"], ["lens", "--path", str(fixture), "--depth", "99"], ["shell", "echo"], ["lens", "--path", "/", "--depth", "1"], ["lens", "--path", "/System", "--depth", "1"]]:
             proc = subprocess.run([str(binary), *args], capture_output=True, env=env, timeout=10)
             assert proc.returncode != 0
@@ -558,7 +562,7 @@ def run_tests():
         integration_env=dict(env, VXCLEAN_FIXTURE_BINARY=str(binary))
         integrated=subprocess.run(["cargo","test","--offline","--lib","payload_native_roundtrip"],cwd=ROOT / "desktop/src_tauri",env=integration_env,capture_output=True,text=True,timeout=180)
         assert integrated.returncode == 0, integrated.stdout + integrated.stderr
-        checks.append("rust_quick_and_orphan_producers_to_native_consumers_identity_manifest_scope")
+        checks.append("rust_quick_orphan_uninstall_producers_to_native_consumers_identity_manifest_scope")
         # Real AppKit normal Quit/Cancel/reopen against our own disposable fixture app.
         ai_cache = make(fixture / "Library/Application Support/Antigravity IDE/GPUCache/disposable", marker)
         ai_state = make(fixture / "Library/Application Support/Antigravity IDE/User/globalStorage/state.vscdb", marker)

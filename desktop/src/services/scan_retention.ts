@@ -5,6 +5,7 @@ type Entry = { generation: number; completedAt?: number; pending: number };
 /** Session memory only; cache freshness never authorizes a filesystem mutation. */
 export class ScanRetention {
   private generation = 0;
+  get revision() { return this.generation; }
   private listeners = new Set<() => void>();
   subscribe(listener: () => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
   private notify() { this.listeners.forEach(listener => listener()); }

@@ -575,7 +575,7 @@ struct MaintenanceCLI {
         bundleID != "com.vxclean.desktop",
         app["is_system_protected"] as? Bool == false, app["is_self_app"] as? Bool == false
       else { throw failure("Ứng dụng được bảo vệ hoặc không hợp lệ") }
-      if fm.fileExists(atPath: bundlePath), Bundle(url: url(bundlePath))?.bundleIdentifier != bundleID { throw failure("identity_changed: app bundle") }
+      if fm.fileExists(atPath: bundlePath), (Bundle(url: url(bundlePath))?.bundleIdentifier != bundleID || (Bundle(url:url(bundlePath))?.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "") != (app["version"] as? String ?? "")) { throw failure("identity_changed: app bundle") }
       if payload["remaining_only"] as? Bool == true, (payload["selected_paths"] as? [String] ?? []).contains(bundlePath) { throw failure("scope_changed: bundle already removed") }
       guard NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty else {
         throw failure("Hãy thoát ứng dụng trước khi gỡ cài đặt")
@@ -656,7 +656,7 @@ struct MaintenanceCLI {
         }
         guard var manifest = (payload["content_snapshots"] as? [String:[[String:Any]]])?[path] else { throw failure("scope_changed: missing manifest") }
         let liveCache = CleanupPolicy.rule(path, category:scanCategoriesByPath[url(path).path] ?? "unknown", scope:scope).executionMode(category:scanCategoriesByPath[url(path).path] ?? "unknown",scope:scope) == "live_cache_root"
-        let current = try CleanupPolicy.snapshot(path, allowLinks:uninstall || lens, mcleanSystem:method == "pnpm_prune" || (scope == "quick_cleanup" && scanCategoriesByPath[url(path).path] == "system_junk"))
+        let current = try CleanupPolicy.snapshot(path, allowLinks:uninstall || lens, mcleanSystem:method == "pnpm_prune" || (scope == "quick_cleanup" && scanCategoriesByPath[url(path).path] == "system_junk"), rootOnly:uninstall)
         if liveCache {manifest=current} else {guard CleanupPolicy.sameSnapshot(manifest,current) else {throw failure("scope_changed")}}
         if !uninstall && !lens {
           let safeOrphan = orphan && CleanupPolicy.rule(path, category: "user_caches", scope: "detailed_cleanup").enabled

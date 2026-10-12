@@ -143,6 +143,12 @@ export async function runAnalyzeSpaceLens(path: string, onProgress?: (event: Len
     return nativeProgress<SpaceLensResponse, LensProgressEvent>('analyze_space_lens', {path}, 'lens_progress', onProgress, shouldCancel);
   });
 }
+/** Read retained Rust metadata; does not scan or create a deletion grant. */
+export async function fetchLensFolder(lensId:string,path:string):Promise<SpaceLensResponse|null>{
+  if(!isTauriEnvironment())return null;
+  const {invoke}=await import('@tauri-apps/api/core');
+  return invoke<SpaceLensResponse|null>('get_lens_folder',{lensId,path});
+}
 export async function chooseScanFolder(): Promise<string | null> {
   if (!isTauriEnvironment()) return null;
   const {invoke} = await import('@tauri-apps/api/core');
