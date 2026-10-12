@@ -13,7 +13,19 @@ let userHome = home
 
 /// DTO adapter for the desktop host. No caller-supplied deletion method or shell command is trusted.
 struct MaintenanceCLI {
+  struct AdminTarget {
+    let index:Int; let path:String; let bytes:Int64; let device:String; let inode:String
+    let stamp:String?
+    init(_ index:Int,_ path:String,_ bytes:Int64,_ device:String,_ inode:String) {
+      self.index=index;self.path=path;self.bytes=bytes;self.device=device;self.inode=inode
+      var st=stat()
+      stamp=lstat(path,&st)==0 ? "\(device):\(inode):\(String(st.st_mode,radix:8)):\(st.st_size):\(st.st_mtimespec.tv_sec):\(st.st_ctimespec.tv_sec)" : nil
+    }
+  }
   static let fm = FileManager.default
+  #if ENGINE_TESTING
+  static var testAdminInvocations = 0
+  #endif
   static var home: String { userHome }
   static func failure(_ message: String) -> NSError {
     NSError(domain: "VXClean", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
@@ -116,7 +128,7 @@ struct MaintenanceCLI {
       let id = categoryID(category)
       if !(await engine.unreadablePaths()).isEmpty { limited.append(id) }
       unsupportedCaches += await engine.unsupportedCachePaths()
-      var candidates = result.items.filter { unchanged($0.path) }
+      var candidates = result.items.filter { unchanged($0.path) && !CleanupPolicy.excludedQuickTarget($0.path, category:id, scope:scope) }
       // Generic pip parent contains layouts we have not validated; emit only exact disposable children.
       if category == .userCache {
         candidates = candidates.flatMap { item -> [CleanableItem] in
@@ -610,6 +622,7 @@ struct MaintenanceCLI {
       }
     }
     guard targets.count <= 10000 else { throw failure("Quá nhiều mục được chọn") }
+    var adminPending: [AdminTarget] = []
     for (index, target) in targets.enumerated() {
       if OperationJournal.cancelled() {
         for remaining in targets.dropFirst(index) { details.append(["path":remaining["path"] as? String ?? "", "status":"skipped", "affected_bytes":Int64(0), "method_used":remaining["deletion_method"] as? String ?? "remove_item", "error_message":"cancelled: chưa bắt đầu mục này"]) }
@@ -621,9 +634,10 @@ struct MaintenanceCLI {
       var status = "success"
       var message: String?
       var bytes: Int64 = 0
-      var usedMethod = method
+      let usedMethod = method
       var systemRemovalStarted = false
       do {
+        guard !CleanupPolicy.excludedQuickTarget(path, category:"system_junk", scope:scope) else { throw failure("protected_target: Wi-Fi log đang ghi nằm ngoài phạm vi dọn") }
         guard unchanged(path) else { throw failure("Từ chối đường dẫn symlink") }
         if let stamps = payload["identities"] as? [String: [NSNumber]], let expected = stamps[path]
         {
@@ -640,14 +654,16 @@ struct MaintenanceCLI {
             throw failure("Mục được bảo vệ hoặc ngoài phạm vi dọn; hãy kiểm tra trong Finder")
           }
         }
-        guard let manifest = (payload["content_snapshots"] as? [String:[[String:Any]]])?[path] else { throw failure("scope_changed: missing manifest") }
-        guard CleanupPolicy.sameSnapshot(manifest, try CleanupPolicy.snapshot(path, allowLinks: uninstall || lens, mcleanSystem: method == "pnpm_prune" || (scope == "quick_cleanup" && scanCategoriesByPath[url(path).path] == "system_junk"))) else { throw failure("scope_changed") }
+        guard var manifest = (payload["content_snapshots"] as? [String:[[String:Any]]])?[path] else { throw failure("scope_changed: missing manifest") }
+        let liveCache = CleanupPolicy.rule(path, category:scanCategoriesByPath[url(path).path] ?? "unknown", scope:scope).executionMode(category:scanCategoriesByPath[url(path).path] ?? "unknown",scope:scope) == "live_cache_root"
+        let current = try CleanupPolicy.snapshot(path, allowLinks:uninstall || lens, mcleanSystem:method == "pnpm_prune" || (scope == "quick_cleanup" && scanCategoriesByPath[url(path).path] == "system_junk"))
+        if liveCache {manifest=current} else {guard CleanupPolicy.sameSnapshot(manifest,current) else {throw failure("scope_changed")}}
         if !uninstall && !lens {
           let safeOrphan = orphan && CleanupPolicy.rule(path, category: "user_caches", scope: "detailed_cleanup").enabled
           let expected = safeOrphan ? "remove_item" : scanAllowed[url(path).path]
           guard let expected else { throw failure("Đường dẫn ngoài kết quả quét hiện tại") }
           guard method == expected else { throw failure("Phương thức xóa không khớp") }
-          _ = try CleanupPolicy.validate(path, category: orphan ? "user_caches" : (scanCategoriesByPath[url(path).path] ?? "unknown"), scope: orphan ? "detailed_cleanup" : scope, expected: manifest)
+          _ = try CleanupPolicy.validate(path, category: orphan ? "user_caches" : (scanCategoriesByPath[url(path).path] ?? "unknown"), scope: orphan ? "detailed_cleanup" : scope, expected: manifest, current:current)
           if method != "trash", payload["confirm_direct_delete"] as? Bool != true {
             throw failure("Thiếu xác nhận xóa vĩnh viễn")
           }
@@ -674,9 +690,9 @@ struct MaintenanceCLI {
               [NSFileWriteNoPermissionError, NSFileReadNoPermissionError].contains(e.code),
               unchanged(path)
             else { throw error }
-            try adminRemove(path)
-            usedMethod = "admin_shell"
-            freed += bytes
+            let expected = (payload["identities"] as! [String:[NSNumber]])[path]!
+            adminPending.append(AdminTarget(index,path,bytes,expected[0].stringValue,expected[1].stringValue))
+            status = "awaiting_admin"
           }
         } else {
           if scope == "quick_cleanup", scanCategoriesByPath[url(path).path] == "system_junk" {
@@ -690,15 +706,22 @@ struct MaintenanceCLI {
                 throw failure("fixture_partial_system_remove")
               }
               #endif
+              #if ENGINE_TESTING
+              if (ProcessInfo.processInfo.environment["VXCLEAN_TEST_ADMIN_REQUIRED"] ?? "").split(separator: "|").contains(Substring(path)) {
+                throw NSError(domain:NSCocoaErrorDomain, code:NSFileWriteNoPermissionError)
+              }
+              #endif
               try fm.removeItem(at: url(path))
             }
             catch {
               let e = error as NSError
               guard [NSFileWriteNoPermissionError, NSFileReadNoPermissionError].contains(e.code) || (e.domain == NSPOSIXErrorDomain && [Int(EACCES), Int(EPERM)].contains(e.code)) else { throw error }
-              try adminRemove(path); usedMethod = "admin_shell"
+              let expected = (payload["identities"] as! [String:[NSNumber]])[path]!
+              adminPending.append(AdminTarget(index,path,bytes,expected[0].stringValue,expected[1].stringValue))
+              status = "awaiting_admin"
             }
-          } else { bytes = try CleanupPolicy.removeCacheFiles(manifest) }
-          freed += bytes
+          } else { bytes = try CleanupPolicy.removeCacheFiles(manifest, liveCache: liveCache) }
+          if status != "awaiting_admin" { freed += bytes }
         }
       } catch {
         let e = error as NSError
@@ -731,13 +754,28 @@ struct MaintenanceCLI {
       #endif
       if let message { result["error_message"] = message }
       details.append(result)
-      try OperationJournal.outcome(result)
+      if status != "awaiting_admin" { try OperationJournal.outcome(result) }
       event(
         "clean_progress",
         [
           "current_item": path, "progress_fraction": Double(index + 1) / Double(targets.count),
           "trashed_bytes": trashed, "freed_bytes": freed,
         ])
+    }
+    if !adminPending.isEmpty {
+      var outcomes: [Int:String] = [:]
+      var adminError: String?
+      do { outcomes = try adminRemoveBatch(adminPending) }
+      catch { adminError = error.localizedDescription }
+      for pending in adminPending {
+        let adminStatus = outcomes[pending.index] ?? "outcome_unknown"
+        let success = adminStatus == "success"
+        var result: [String:Any] = ["path":pending.path,"status":adminStatus, "affected_bytes":success ? pending.bytes : Int64(0),"method_used":"admin_shell"]
+        if success { freed += pending.bytes }
+        else { result["error_message"] = adminError ?? "\(adminStatus): mục chưa hoàn tất; không tự chạy lại."; result["prior_removal_may_be_partial"]=true }
+        details[pending.index] = result
+        try OperationJournal.outcome(result)
+      }
     }
     let success = details.filter { $0["status"] as? String == "success" }.count
     let response: [String:Any] = [
@@ -747,31 +785,74 @@ struct MaintenanceCLI {
       "success_count": success, "failure_count": details.count - success,
       "duration_ms": Int(Date().timeIntervalSince(start) * 1000), "details": details,
     ]
+    #if ENGINE_TESTING
+    var fixtureResponse = response
+    fixtureResponse["test_admin_invocations"] = testAdminInvocations
+    try OperationJournal.finish(fixtureResponse)
+    return fixtureResponse
+    #else
     try OperationJournal.finish(response)
     return response
+    #endif
   }
-  static func adminRemove(_ path: String) throws {
-    // Two distinct quoting layers: shell argument, then AppleScript string. No arbitrary command input.
-    let shellPath = "'" + path.replacingOccurrences(of: "'", with: "'\"'\"'") + "'"
-    let attrs = try fm.attributesOfItem(atPath: path)
-    guard let device = attrs[.systemNumber] as? NSNumber,
-      let inode = attrs[.systemFileNumber] as? NSNumber
-    else { throw failure("Không xác minh được định danh tệp quản trị") }
-    let expected = "'" + device.stringValue + ":" + inode.stringValue + "'"
-    let shell =
-      "/bin/kill -0 " + String(ProcessInfo.processInfo.processIdentifier) + " && test ! -L "
-      + shellPath + " && test \"$(/usr/bin/stat -f '%d:%i' " + shellPath + ")\" = " + expected
-      + " && /bin/rm -rf -- " + shellPath
-    let escaped = shell.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(
-      of: "\"", with: "\\\""
-    ).replacingOccurrences(of: "\n", with: "\\n").replacingOccurrences(of: "\r", with: "\\r")
-    guard
-      let script = NSAppleScript(
-        source: "do shell script \"" + escaped + "\" with administrator privileges")
-    else { throw failure("Không tạo được yêu cầu quản trị") }
-    var error: NSDictionary?
-    script.executeAndReturnError(&error)
-    if let error { throw failure("Xác thực hoặc thao tác quản trị thất bại: \(error)") }
+  static func adminRemoveBatch(_ items: [AdminTarget]) throws -> [Int:String] {
+    #if ENGINE_TESTING
+    testAdminInvocations += 1
+    #endif
+    if OperationJournal.cancelled() { return Dictionary(uniqueKeysWithValues:items.map {($0.index,"admin_not_started")}) }
+    func quote(_ value:String)->String {"'" + value.replacingOccurrences(of:"'",with:"'\"'\"'") + "'"}
+    func output(_ index:Int,_ status:String)->String {"/usr/bin/printf '%s\t%s\n' '" + String(index) + "' '" + status + "'"}
+    #if ENGINE_TESTING
+    if let parent=ProcessInfo.processInfo.environment["VXCLEAN_TEST_ADMIN_MISSING_PARENT"] {try fm.removeItem(atPath:parent)}
+    #endif
+    let lines=items.map {item -> String in
+      let parent=url(item.path).deletingLastPathComponent().path
+      guard let stamp=item.stamp, let physical=realpath(parent,nil) else {return output(item.index,"guard_rejected")}
+      let expectedParent=String(cString:physical);free(physical)
+      let path=quote(item.path)
+      // Grant is a selected root. Check its metadata again after authentication.
+      // No descendant snapshot is claimed for MClean recursive System Junk.
+      return "if ! /bin/kill -0 " + String(ProcessInfo.processInfo.processIdentifier)
+        + " || test -e " + quote(OperationJournal.cancelPath ?? "/dev/null")
+        + "; then " + output(item.index,"admin_not_started")
+        + "; elif test ! -L " + path
+        + " && test \"$(cd " + quote(parent) + " && /bin/pwd -P)\" = " + quote(expectedParent)
+        + " && test \"$(/usr/bin/stat -f '%d:%i:%p:%z:%m:%c' " + path + ")\" = " + quote(stamp)
+        + "; then if /bin/rm -rf -- " + path + " && test ! -e " + path + " && test ! -L " + path
+        + "; then " + output(item.index,"success") + "; else " + output(item.index,"partial")
+        + "; fi; else " + output(item.index,"guard_rejected") + "; fi"
+    }
+    let shell=lines.joined(separator:"\n")
+    func parse(_ text:String)->[Int:String] {
+      var result=[Int:String]()
+      for line in text.split(whereSeparator:{$0.isNewline}) {
+        let fields=line.split(separator:"\t");guard fields.count==2, let index=Int(fields[0]),items.contains(where:{$0.index==index}),["success","partial","guard_rejected","admin_not_started"].contains(String(fields[1])) else {continue}
+        result[index]=String(fields[1])
+      }
+      return result
+    }
+    #if ENGINE_TESTING
+    if let mode=ProcessInfo.processInfo.environment["VXCLEAN_TEST_ADMIN_MODE"] {
+      if mode=="cancel" {return Dictionary(uniqueKeysWithValues:items.map {($0.index,"admin_not_started")})}
+      guard mode=="success" else {throw failure("invalid fixture admin mode")}
+      if let replace=ProcessInfo.processInfo.environment["VXCLEAN_TEST_ADMIN_REPLACE_PATH"] {
+        try fm.moveItem(atPath:replace,toPath:replace+".original");try fm.createDirectory(atPath:replace,withIntermediateDirectories:true);try Data("replacement".utf8).write(to:url(replace).appendingPathComponent("keep"))
+      }
+      if let parent=ProcessInfo.processInfo.environment["VXCLEAN_TEST_ADMIN_REMOVE_PARENT"] {try fm.removeItem(atPath:parent)}
+      if let path=ProcessInfo.processInfo.environment["VXCLEAN_TEST_ADMIN_MODIFY_ROOT"] {
+        var times=[timeval(tv_sec:time(nil)-30,tv_usec:0),timeval(tv_sec:time(nil)-30,tv_usec:0)];utimes(path,&times)
+      }
+      let process=Process();process.executableURL=URL(fileURLWithPath:"/bin/sh");process.arguments=["-c",shell];let pipe=Pipe();process.standardOutput=pipe;try process.run();let data=pipe.fileHandleForReading.readDataToEndOfFile();process.waitUntilExit();return parse(String(decoding:data,as:UTF8.self))
+    }
+    #endif
+    let escaped=shell.replacingOccurrences(of:"\\",with:"\\\\").replacingOccurrences(of:"\"",with:"\\\"").replacingOccurrences(of:"\n",with:"\\n").replacingOccurrences(of:"\r",with:"\\r")
+    guard let script=NSAppleScript(source:"do shell script \"" + escaped + "\" with administrator privileges") else {throw failure("Không tạo được yêu cầu quản trị")}
+    var error:NSDictionary?;let result=script.executeAndReturnError(&error)
+    if let error {
+      if (error[NSAppleScript.errorNumber] as? NSNumber)?.intValue == -128 {return Dictionary(uniqueKeysWithValues:items.map {($0.index,"admin_not_started")})}
+      throw failure("Xác thực hoặc thao tác quản trị thất bại: \(error)")
+    }
+    return parse(result.stringValue ?? "")
   }
   static func lensRootAllowed(_ path: String) -> Bool {
     let path = url(path).resolvingSymlinksInPath().path
@@ -844,6 +925,19 @@ struct MaintenanceCLI {
       guard args == ["orphans"] else { throw failure("Sai đối số orphans") }
       try json(orphans())
     #if ENGINE_TESTING
+    case "fixture_admin_alias":
+      guard args == [command], ProcessInfo.processInfo.environment["VXCLEAN_TEST_ADMIN_MODE"] == "success" else { throw failure("invalid fixture admin mode") }
+      try OperationJournal.configure(["operation_id":UUID().uuidString],scope:"quick_cleanup")
+      let paths = ["/tmp/", "/var/tmp/"].map { $0 + "vxclean_admin_alias_" + UUID().uuidString }
+      defer { for path in paths { try? fm.removeItem(atPath:path) } }
+      var pending: [AdminTarget] = []
+      for (index,path) in paths.enumerated() {
+        try Data(repeating:42,count:4096).write(to:URL(fileURLWithPath:path))
+        let attrs=try fm.attributesOfItem(atPath:path)
+        pending.append(AdminTarget(index,path,4096,(attrs[.systemNumber] as! NSNumber).stringValue,(attrs[.systemFileNumber] as! NSNumber).stringValue))
+      }
+      let outcomes=try adminRemoveBatch(pending)
+      try json(["success_count":outcomes.values.filter {$0 == "success"}.count,"test_admin_invocations":testAdminInvocations,"all_removed":paths.allSatisfy { !fm.fileExists(atPath:$0) }])
     case "fixture_app_launch":
       guard args.count==3, args[1]=="--path", args[2].hasPrefix(home+"/Applications/"), unchanged(args[2]), Bundle(path:args[2])?.bundleIdentifier=="com.lemon.lvoverseas" else { throw failure("invalid_fixture: root=\(home), path=\(args.last ?? ""), args=\(args.count), boundary=\(args.count > 2 && args[2].hasPrefix(home+"/Applications/")), canonical=\(args.count > 2 && unchanged(args[2])), bundle=\(args.count > 2 ? Bundle(path:args[2])?.bundleIdentifier ?? "nil" : "nil")") }
       let configuration=NSWorkspace.OpenConfiguration(); configuration.activates=false; configuration.createsNewApplicationInstance=true
@@ -859,7 +953,7 @@ struct MaintenanceCLI {
     case "clean", "uninstall", "clean_orphans", "trash_lens":
       guard args == [command, "--stdin"] else { throw failure("Sai đối số dọn dẹp") }
       let data = FileHandle.standardInput.readDataToEndOfFile()
-      guard data.count < 4 * 1024 * 1024,
+      guard data.count < 64 * 1024 * 1024,
         let payload = try JSONSerialization.jsonObject(with: data) as? [String: Any]
       else { throw failure("Payload quá lớn hoặc sai định dạng") }
       try json(

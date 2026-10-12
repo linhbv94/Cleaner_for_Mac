@@ -58,8 +58,19 @@ Byte counters phân biệt estimated_removed_bytes, trashed_bytes, size_kind/par
 | Cleanup | clean --stdin | Same entry point, policy mandatory/ticket scope/target IDs verified |
 | Apps/Orphans/Lens | Separate commands hiện có | Separate ticket/operation, no policy bypass |
 
-Giới hạn hiện có stdout 32 MiB, stdin Swift 4 MiB, target 10.000 cần giữ/validate typed và báo error; không hang pipe, kill/reap own subprocess hữu hạn. Nếu cần đổi timeout vì workload, ghi hằng số mới và test thay vì âm thầm dùng số cũ. Host shutdown không để owned engine tiếp tục mutation.
+Giới hạn hiện có stdout 32 MiB, stdin cleanup Swift/host 64 MiB (lifecycle request vẫn4MiB), target 10.000 cần giữ/validate typed và báo error; không hang pipe, kill/reap own subprocess hữu hạn. Nếu cần đổi timeout vì workload, ghi hằng số mới và test thay vì âm thầm dùng số cũ. Timeout scan120giây, mutation600giây. Host shutdown không để owned engine tiếp tục mutation. Một cleanup dùng một process/request, gom permission failures và admin một lần cuối lượt; xem spec24.
 
 ## Menubar
 
 Metrics service host-owned, shared main/panel. Panel chỉ metrics + request open main/navigation/settings/quick scan read; mutation main-only. Capability menu_bar_monitor true chỉ khi native tray setup đạt; secondary window không được grant maintenance mutations. Native menu Quit/reopen phải dùng common lifecycle handler, không frontend-only hide.
+
+
+### Contract maintenance sau audit các patch Quick — 2026-10-11
+
+- Item scan Quick/Detail có `execution_mode`: `strict_snapshot` hoặc `live_cache_root`. Native policy quyết định mode, host chỉ dùng metadata của ticket native; UI không tự cấp live mode. Scope/rules Quick không thay đổi.
+- `get_operation_history`: đối soát thụ động app đã chạy lại đúng bundle/path, trả summary toàn history. Các field bổ sung: `recovery_required`, `acknowledgement.acknowledged`, `retained_targets_count`, `history_updated_at_ms`, `archive_sha256`, `summary_sha256`, `original_files`. Backend kiểm tra checksum trước khi dùng summary. Không tự launch hoặc chạy lại dọn.
+- `acknowledge_operation({ operationId })`: ẩn notification đã xem qua journal, không xóa evidence, không đổi outcome hoặc updater guard.
+- Admin outcome mỗi target: `success`, `admin_not_started`, `guard_rejected`, `partial`, `outcome_unknown`. `prior_removal_may_be_partial` giữ thông tin một lượt user-level có thể đã xóa dở; Cancel admin không chứng minh lượt user-level chưa làm gì.
+- Archive `evidence.json.gz` chứa row đầy đủ và nội dung nguyên bản từng file host/result/lifecycle/events/cancel. Summary chỉ commit sau archive; nguyên bản chỉ được bỏ khi digest đúng. File hỏng/lạ khiến journal fail closed.
+
+- Host bỏ qua toàn bộ targets trước khi khởi chạy native trả `native_execution: not_started`; journal terminal của ca này không được coi là một thao tác dọn bị ngắt. Không suy ra ca này từ success_count0 đơn thuần.

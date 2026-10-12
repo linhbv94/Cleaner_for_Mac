@@ -41,7 +41,8 @@ def run_tests():
         assert reference_compile.returncode == 0, reference_compile.stderr.decode()
         checks = []
         trash_outcomes = []
-        def invoke(args, payload=None, timeout=30):
+        memory_checks=[]
+        def invoke(args, payload=None, timeout=30, measure_memory=False):
             if payload is not None:
                 payload = dict(payload)
                 payload.setdefault("protocol_version", "2.0")
@@ -52,8 +53,11 @@ def run_tests():
                 requested = payload.get("selected_paths", []) + [t["path"] for t in payload.get("targets", [])]
                 payload.setdefault("content_snapshots", {p: manifest(Path(p), root_only=payload.get("operation_scope") == "quick_cleanup" and "/system/" in p or payload.get("operation_scope") == "quick_cleanup" and "/Library/Logs/" in p) for p in requested if Path(p).exists() and not Path(p).is_symlink()})
                 payload.setdefault("operation_scope", {"clean":"detailed_cleanup", "uninstall":"uninstall", "clean_orphans":"orphan_cleanup", "trash_lens":"lens_trash"}.get(args[0], ""))
-            proc = subprocess.run([str(binary), *args], input=json.dumps(payload).encode() if payload else None, capture_output=True, env=env, timeout=timeout)
+            proc = subprocess.run((["/usr/bin/time","-l"] if measure_memory else [])+[str(binary), *args], input=json.dumps(payload).encode() if payload else None, capture_output=True, env=env, timeout=timeout)
             assert proc.returncode == 0, proc.stderr.decode()
+            if measure_memory:
+                rss=next(int(line.split()[0]) for line in proc.stderr.decode().splitlines() if "maximum resident set size" in line)
+                memory_checks.append({"scenario":"native_chrome_7000_cache_files","peak_rss_bytes":rss})
             return json.loads(proc.stdout)
         def make(path, content=b"f" * 2048):
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -71,8 +75,8 @@ def run_tests():
             return rows
         def identities(paths):
             return {str(p): [p.stat().st_dev, p.stat().st_ino] for p in paths}
-        def clean(path, method="remove_item", confirm=True, stamp=None, scope="detailed_cleanup", timeout=30):
-            return invoke(["clean", "--stdin"], {"operation_scope":scope, "targets": [{"path": str(path), "deletion_method": method}], "confirm_direct_delete": confirm, "identities": stamp or identities([path])}, timeout=timeout)
+        def clean(path, method="remove_item", confirm=True, stamp=None, scope="detailed_cleanup", timeout=30, measure_memory=False):
+            return invoke(["clean", "--stdin"], {"operation_scope":scope, "targets": [{"path": str(path), "deletion_method": method}], "confirm_direct_delete": confirm, "identities": stamp or identities([path])}, timeout=timeout, measure_memory=measure_memory)
         empty_scan = invoke(["scan", "--all"])
         assert not any(c["category"] == "xcode_junk" for c in empty_scan["categories"])
         detailed = invoke(["scan", "--all", "--include-empty"])
@@ -339,6 +343,70 @@ def run_tests():
         safe_quick = make(fixture / "Library/Caches/org.fixture.safe/quick.bin")
         quick_result = invoke(["clean", "--stdin"], {"operation_scope":"quick_cleanup", "targets":[{"path":str(safe_quick.parent),"deletion_method":"remove_item"}],"confirm_direct_delete":True,"identities":identities([safe_quick.parent])})
         assert quick_result["success_count"] == 1 and not quick_marker.exists()
+        chrome_root = fixture / "Library/Caches/Google/Chrome"
+        live_payload = make(chrome_root / "Default/Cache/Cache_Data/live", marker * 40)
+        old_chrome_manifest = manifest(chrome_root)
+        root_stamp = identities([chrome_root])
+        live_payload.write_bytes(marker * 100)
+        new_payload = make(chrome_root / "Profile 1/Code Cache/new", marker * 40)
+        chrome_profile = make(fixture / "Library/Application Support/Google/Chrome/Default/Cookies", marker)
+        env["VXCLEAN_TEST_LIVE_CHROME_APPEND"] = str(live_payload)
+        try:
+            live_result = invoke(["clean", "--stdin"], {"operation_scope":"quick_cleanup", "targets":[{"path":str(chrome_root),"deletion_method":"remove_item"}],"confirm_direct_delete":True,"identities":root_stamp,"content_snapshots":{str(chrome_root):old_chrome_manifest}})
+        finally:
+            env.pop("VXCLEAN_TEST_LIVE_CHROME_APPEND")
+        assert live_result["success_count"] == 1 and not live_payload.exists() and not new_payload.exists(), live_result
+        assert chrome_root.is_dir() and chrome_profile.read_bytes() == marker
+        assert live_result["permanently_freed_bytes"] == len(marker) * 140 + 4
+        for malicious in ["symlink", "hardlink", "Cookies"]:
+            kept = make(chrome_root / "Default/Cache/Cache_Data/keep", marker * 40)
+            proof = manifest(chrome_root)
+            injected = chrome_root / "Default/Cache/Cache_Data" / malicious
+            if malicious == "symlink": injected.symlink_to(chrome_profile)
+            elif malicious == "hardlink": os.link(chrome_profile, injected)
+            else: injected.write_bytes(marker)
+            rejection = invoke(["clean", "--stdin"], {"operation_scope":"quick_cleanup", "targets":[{"path":str(chrome_root),"deletion_method":"remove_item"}],"confirm_direct_delete":True,"identities":identities([chrome_root]),"content_snapshots":{str(chrome_root):proof}})
+            assert rejection["failure_count"] == 1 and kept.exists() and chrome_profile.read_bytes() == marker
+            injected.unlink()
+        assert clean(chrome_root)["failure_count"] == 1 and kept.exists()
+        assert clean(chrome_root, scope="quick_cleanup")["success_count"] == 1 and not kept.exists()
+        checks.append("live_chrome_quick_cache_refresh_preserves_profile_rejects_links_and_state_detailed_stays_strict")
+        codex_root = fixture / "Library/Caches/Codex"
+        codex_body = make(codex_root / "Default/Cache/Cache_Data/body", marker * 40)
+        codex_proof = manifest(codex_root)
+        codex_stamp = identities([codex_root])
+        codex_body.write_bytes(marker * 100)
+        codex_new = make(codex_root / "Default/Code Cache/new", marker * 40)
+        codex_state = make(fixture / "Library/Application Support/Codex/User/globalStorage/state.vscdb", marker)
+        codex_runtime = make(fixture / ".codex/plugins/cache/runtime", marker)
+        env["VXCLEAN_TEST_LIVE_CHROME_APPEND"] = str(codex_body)
+        try:
+            codex_result = invoke(["clean", "--stdin"], {"operation_scope":"quick_cleanup", "targets":[{"path":str(codex_root),"deletion_method":"remove_item"}],"confirm_direct_delete":True,"identities":codex_stamp,"content_snapshots":{str(codex_root):codex_proof}})
+        finally:
+            env.pop("VXCLEAN_TEST_LIVE_CHROME_APPEND")
+        assert codex_result["success_count"] == 1 and not codex_body.exists() and not codex_new.exists(), codex_result
+        assert codex_result["permanently_freed_bytes"] == len(marker) * 140 + 4
+        assert codex_state.read_bytes() == marker and codex_runtime.read_bytes() == marker
+        kept_codex = make(codex_root / "Default/Cache/Cache_Data/keep", marker * 40)
+        before = manifest(codex_root)
+        injected_codex = make(codex_root / "Default/Local Storage/leveldb/state", marker)
+        denied = invoke(["clean", "--stdin"], {"operation_scope":"quick_cleanup", "targets":[{"path":str(codex_root),"deletion_method":"remove_item"}],"confirm_direct_delete":True,"identities":identities([codex_root]),"content_snapshots":{str(codex_root):before}})
+        assert denied["failure_count"] == 1 and kept_codex.exists() and injected_codex.read_bytes() == marker
+        injected_codex.unlink(); injected_codex.parent.rmdir(); injected_codex.parent.parent.rmdir()
+        old_codex_stamp = identities([codex_root]); moved_codex = codex_root.with_name("codex_moved_fixture")
+        codex_root.rename(moved_codex)
+        replacement_codex = make(codex_root / "Default/Cache/Cache_Data/new", marker * 40)
+        assert clean(codex_root, stamp=old_codex_stamp, scope="quick_cleanup")["failure_count"] == 1 and replacement_codex.exists()
+        checks.append("live_codex_quick_cache_preserves_history_runtime_rejects_state_injection_and_root_replacement")
+        wifi = make(fixture / "system/private/var/log/wifi.log", marker * 40)
+        rotated_wifi = make(wifi.with_name("wifi.log.0.bz2"), marker * 40)
+        wifi_scan = invoke(["scan", "--scope", "quick_cleanup", "--include-empty"])
+        assert not any(i["path"] == str(wifi) for c in wifi_scan["categories"] for i in c["items"])
+        assert not any(i["path"] == str(wifi) for i in wifi_scan["excluded_items"])
+        assert any(i["path"] == str(rotated_wifi) and i["is_cleanable"] for c in wifi_scan["categories"] for i in c["items"])
+        assert clean(wifi, scope="quick_cleanup")["failure_count"] == 1 and wifi.read_bytes() == marker * 40
+        assert clean(rotated_wifi, scope="quick_cleanup")["success_count"] == 1 and not rotated_wifi.exists() and wifi.exists()
+        checks.append("active_wifi_log_absent_from_quick_scope_and_revalidation_rotated_log_still_cleanable")
         runtime = make(fixture / ".npm/_npx/tool/runtime", marker)
         assert clean(runtime.parent.parent.parent)["failure_count"] == 1 and runtime.read_bytes() == marker
         cef = fixture / "Movies/CapCut/User Data/CEF/Cache"
@@ -506,7 +574,7 @@ def run_tests():
         bulk.mkdir(parents=True, exist_ok=True)
         for index in range(7000): (bulk / f"entry_{index:05d}").write_bytes(marker)
         keep_profile=make(fixture / "Library/Application Support/Google/Chrome/Default/Preferences", marker)
-        started=time.monotonic(); bulk_result=clean(bulk.parent.parent, scope="quick_cleanup", timeout=180); elapsed=time.monotonic()-started
+        started=time.monotonic(); bulk_result=clean(bulk.parent.parent, scope="quick_cleanup", timeout=180, measure_memory=True); elapsed=time.monotonic()-started
         assert bulk_result["success_count"] == 1 and bulk_result["failure_count"] == 0
         assert not any(p.is_file() for p in bulk.iterdir()) and keep_profile.read_bytes()==marker
         operation=fixture / "Library/Application Support/com.vxclean.desktop/operations" / bulk_result["operation_id"]
@@ -519,6 +587,44 @@ def run_tests():
         print(f"Chrome 7000-file durable journal: {elapsed:.3f}s", flush=True)
         assert elapsed<180
         checks.append("chrome_7000_cache_files_durable_journal_preserves_profile_under_180s")
+
+        # Deferred permission failures share exactly one admin invocation.
+        for admin_mode in ["success", "cancel"]:
+            roots = [fixture / "system/tmp" / ("admin_"+admin_mode+str(i)+"_'\n") for i in range(3)]
+            for root in roots: make(root / "cache.bin", marker*100)
+            env["VXCLEAN_TEST_ADMIN_REQUIRED"]="|".join(map(str,roots))
+            env["VXCLEAN_TEST_ADMIN_MODE"]=admin_mode
+            response=invoke(["clean","--stdin"],{"operation_scope":"quick_cleanup","confirm_direct_delete":True,"targets":[{"path":str(root),"deletion_method":"remove_item"} for root in roots],"identities":identities(roots)})
+            assert response["test_admin_invocations"]==1, response
+            assert response["success_count"]==(3 if admin_mode=="success" else 0),response
+            assert all(root.exists()==(admin_mode=="cancel") for root in roots)
+            if admin_mode=="cancel": assert all(d["status"]=="admin_not_started" for d in response["details"]),response
+            del env["VXCLEAN_TEST_ADMIN_REQUIRED"];del env["VXCLEAN_TEST_ADMIN_MODE"]
+        root=fixture / "system/tmp/admin_identity"
+        make(root / "cache.bin",marker*100)
+        env.update(VXCLEAN_TEST_ADMIN_REQUIRED=str(root),VXCLEAN_TEST_ADMIN_MODE="success",VXCLEAN_TEST_ADMIN_REPLACE_PATH=str(root))
+        response=invoke(["clean","--stdin"],{"operation_scope":"quick_cleanup","confirm_direct_delete":True,"targets":[{"path":str(root),"deletion_method":"remove_item"}],"identities":identities([root])})
+        assert response["test_admin_invocations"]==1 and response["success_count"]==0 and (root / "keep").read_text()=="replacement" and (Path(str(root)+".original") / "cache.bin").exists(),response
+        for key in ["VXCLEAN_TEST_ADMIN_REQUIRED","VXCLEAN_TEST_ADMIN_MODE","VXCLEAN_TEST_ADMIN_REPLACE_PATH"]:del env[key]
+        env["VXCLEAN_TEST_ADMIN_MODE"]="success"
+        aliases=invoke(["fixture_admin_alias"])
+        del env["VXCLEAN_TEST_ADMIN_MODE"]
+        assert aliases["success_count"]==2 and aliases["test_admin_invocations"]==1 and aliases["all_removed"],aliases
+        checks.append("admin_guard_raw_tmp_var_tmp_uses_physical_realpath")
+        checks.append("single_admin_pass_success_cancel_quoting_identity_guard")
+        for key in ["VXCLEAN_TEST_ADMIN_MISSING_PARENT","VXCLEAN_TEST_ADMIN_REMOVE_PARENT","VXCLEAN_TEST_ADMIN_MODIFY_ROOT"]:
+            roots=[fixture / ("system/tmp/"+key+"_changed"), fixture / ("system/private/var/tmp/"+key+"_valid")]
+            for root in roots: make(root / "cache.bin",marker*100)
+            env.update(VXCLEAN_TEST_ADMIN_REQUIRED="|".join(map(str,roots)),VXCLEAN_TEST_ADMIN_MODE="success")
+            env[key]=str(roots[0].parent if key.endswith("PARENT") else roots[0])
+            response=invoke(["clean","--stdin"],{"operation_scope":"quick_cleanup","confirm_direct_delete":True,"targets":[{"path":str(root),"deletion_method":"remove_item"} for root in roots],"identities":identities(roots)})
+            assert response["test_admin_invocations"]==1 and response["success_count"]==1,response
+            assert response["details"][0]["status"]=="guard_rejected" and response["details"][1]["status"]=="success",response
+            assert not roots[1].exists()
+            if key.endswith("ROOT"): assert (roots[0] / "cache.bin").exists()
+            for name in [key,"VXCLEAN_TEST_ADMIN_REQUIRED","VXCLEAN_TEST_ADMIN_MODE"]:del env[name]
+        checks.append("admin_changed_parent_or_metadata_does_not_abort_valid_sibling")
+
 
         env["VXCLEAN_TEST_STALL_LARGE_FILES"]="1"
         started=time.monotonic()
@@ -572,6 +678,8 @@ let delegate=Delegate(); let app=NSApplication.shared; app.delegate=delegate; ap
             wait_trace("terminated")
             cleaned=clean(cache.parent)
             assert cleaned["success_count"] == 1 and not cache.exists(), cleaned
+            passive=invoke(["finish_apps","--stdin"],{"operation_id":prepared["operation_id"],"reconcile_only":True})
+            assert not passive["apps"][0]["reopened"] and trace.read_text().count("started:")==1,passive
             reopened=invoke(["finish_apps","--stdin"],{"operation_id":prepared["operation_id"]})
             assert reopened["apps"][0]["reopened"], reopened
             # Repeated Finish must not create another instance.
@@ -581,33 +689,24 @@ let delegate=Delegate(); let app=NSApplication.shared; app.delegate=delegate; ap
             before=trace.read_text().count("started:")
             again=invoke(["finish_apps","--stdin"],{"operation_id":prepared["operation_id"]})
             assert again["apps"][0]["reopened"] and trace.read_text().count("started:")==before
+            life_file=fixture / "Library/Application Support/com.vxclean.desktop/operations" / prepared["operation_id"] / "lifecycle.json"
+            life=json.loads(life_file.read_text());life["status"]="reopen_pending";life["apps"][0]["reopened"]=False;life["apps"][0]["version"]="old-version"
+            life_file.write_text(json.dumps(life))
+            reconciled=invoke(["finish_apps","--stdin"],{"operation_id":prepared["operation_id"],"reconcile_only":True})
+            assert reconciled["status"]=="reopened" and reconciled["apps"][0]["reopened"],reconciled
+            assert trace.read_text().count("started:")==before
+            checks.append("passive_reconcile_running_updated_app_without_duplicate_launch")
             checks.append("appkit_fixture_quit_cancel_rescan_cleanup_reopen_no_duplicate")
-            # Same lifecycle through Quick authority; Cancel preserves cache, no borrowed detail scope.
-            quick_marker = marker * 100
-            quick_cache = make(fixture / "Library/Caches/com.lemon.lvoverseas/Cache/body", quick_marker)
-            quick_request = {"operation_scope":"quick_cleanup", "confirm_app_quit":True, "targets":[{"path":str(quick_cache.parent), "category":"user_caches"}]}
-            busy_scan = invoke(["scan", "--scope", "quick_cleanup", "--include-empty"])
-            busy_row = next(item for cat in busy_scan["categories"] for item in cat["items"] if str(quick_cache).startswith(item["path"] + "/"))
-            assert busy_row["is_cleanable"] and busy_row["requires_app_quit"]
-            quick_request["targets"][0]["path"] = busy_row["path"]
-            cancel_quit.touch()
-            cancelled = invoke(["prepare_apps", "--stdin"], quick_request)
-            assert cancelled["status"] == "cancelled" and quick_cache.read_bytes() == quick_marker
-            cancel_quit.unlink()
-            prepared = invoke(["prepare_apps", "--stdin"], quick_request)
-            assert prepared["status"] == "ready_for_rescan" and prepared["apps"][0]["closed"]
-            fresh = invoke(["scan", "--scope", "quick_cleanup", "--include-empty"])
-            fresh_row = next(item for cat in fresh["categories"] for item in cat["items"] if str(quick_cache).startswith(item["path"] + "/"))
-            assert fresh_row["is_cleanable"] and not fresh_row["requires_app_quit"]
-            cleaned = invoke(["clean", "--stdin"], {"operation_scope":"quick_cleanup", "targets":[{"path":fresh_row["path"], "deletion_method":"remove_item"}], "confirm_direct_delete":True, "identities":identities([Path(fresh_row["path"])])})
-            assert cleaned["success_count"] == 1 and not quick_cache.exists(), cleaned
-            reopened = invoke(["finish_apps", "--stdin"], {"operation_id":prepared["operation_id"]})
-            assert reopened["apps"][0]["reopened"]
-            checks.append("quick_appkit_quit_cancel_rescan_clean_reopen_preserves_quick_authority")
-            # Stop only the fixture via its normal Quit, never a real CapCut/Chrome instance.
-            make(cache)
-            stopped=invoke(["prepare_apps","--stdin"],request)
-            assert stopped["apps"][0]["closed"], stopped
+            # Quick caches stay usable without terminating the running app.
+            quick_file=make(fixture / "Library/Caches/com.lemon.lvoverseas/Cache/fixture_cache",marker*100)
+            quick_scan=invoke(["scan","--scope","quick_cleanup"])
+            quick_row=next(i for c in quick_scan["categories"] for i in c["items"] if i["path"]==str(quick_file.parent.parent))
+            assert quick_row["is_cleanable"] and not quick_row["requires_app_quit"],quick_row
+            terminations=trace.read_text().count("terminated")
+            cleaned=clean(quick_file.parent.parent,scope="quick_cleanup")
+            assert cleaned["success_count"]==1 and not quick_file.exists(),cleaned
+            assert trace.read_text().count("terminated")==terminations
+            checks.append("quick_live_cache_no_quit_detailed_lifecycle_preserved")
         finally:
             cancel_quit.unlink(missing_ok=True)
             try:
@@ -615,7 +714,7 @@ let delegate=Delegate(); let app=NSApplication.shared; app.delegate=delegate; ap
                 invoke(["prepare_apps","--stdin"],request)
             except Exception:
                 pass
-        print(json.dumps({"passed": checks, "count": len(checks), "trash_outcomes": trash_outcomes}, ensure_ascii=False, indent=2))
+        print(json.dumps({"passed": checks, "count": len(checks), "trash_outcomes": trash_outcomes, "memory_checks":memory_checks}, ensure_ascii=False, indent=2))
 
 if __name__ == "__main__":
     run_tests()

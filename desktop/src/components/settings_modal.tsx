@@ -1,3 +1,4 @@
+import { OperationHistory } from './operation_history';
 import { UpdatePanel } from './update_panel';
 import React, { useState, useEffect } from 'react';
 import { X, Shield, Sliders, HardDrive, Info, Sparkles, Coffee, ExternalLink, RotateCcw, Heart } from 'lucide-react';
@@ -22,7 +23,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   themeMode,
   onChangeThemeMode,
 }) => {
-  const [activeTab, setActiveTab] = useState<'general' | 'system' | 'updates' | 'about' | 'support'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'system' | 'updates' | 'history' | 'about' | 'support'>('general');
   useEffect(() => { if(updateFocusRequest > 0) setActiveTab('updates'); }, [updateFocusRequest]);
   const [appVersion, setAppVersion] = useState<string>(packageInfo.version || '0.1.0');
 
@@ -125,6 +126,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <span>Hệ thống (System)</span>
             </button>
 
+            <button type="button" onClick={() => setActiveTab('history')}
+              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg font-medium text-left transition-all ${activeTab === 'history' ? 'bg-cyan-50 dark:bg-cyan-500/20 text-cyan-800 dark:text-cyan-300 border border-cyan-300 dark:border-cyan-500/40' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-white/5'}`}>
+              <RotateCcw className="w-4 h-4" /><span>Lịch sử thao tác</span>
+            </button>
+
             <div className="my-2 border-t border-slate-200 dark:border-white/10" />
 
             <button
@@ -169,6 +175,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
           {/* Tab Content Panel */}
           <div className="flex-1 min-h-0 p-6 overflow-y-auto space-y-6 bg-white dark:bg-[#141821]">
+            {activeTab === 'history' && <OperationHistory mode="history" />}
             {/* TAB 1: GENERAL */}
             {activeTab === 'general' && (
               <div className="space-y-5">

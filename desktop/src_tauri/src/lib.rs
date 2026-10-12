@@ -101,7 +101,7 @@ pub fn run() {
             _ => {}
         })
         .invoke_handler(tauri::generate_handler![
-            maintenance_bridge::prepare_for_update, maintenance_bridge::resume_after_update_error, maintenance_bridge::restart_after_update, menubar::menubar_action, maintenance_bridge::prepare_cleanup_apps, maintenance_bridge::finish_cleanup_apps, maintenance_bridge::get_operation_status, maintenance_bridge::get_operation_history,
+            maintenance_bridge::prepare_for_update, maintenance_bridge::resume_after_update_error, maintenance_bridge::restart_after_update, menubar::menubar_action, maintenance_bridge::prepare_cleanup_apps, maintenance_bridge::finish_cleanup_apps, maintenance_bridge::get_operation_status, maintenance_bridge::get_operation_history, maintenance_bridge::acknowledge_operation,
             engine_bridge::get_capabilities,
             engine_bridge::get_system_snapshot,
             maintenance_bridge::start_scan, maintenance_bridge::cancel_scan,

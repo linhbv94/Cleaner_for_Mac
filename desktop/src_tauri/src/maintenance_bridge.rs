@@ -40,8 +40,8 @@ pub async fn prepare_for_update(window: tauri::WebviewWindow, app: AppHandle, st
     main_only(&window)?;
     if state.is_mutating() { return Err("Đang dọn/đóng ứng dụng; hãy chờ thao tác hoàn tất".into()); }
     let _guard=state.mutation.lock().await;
-    let history=get_operation_history(window,app.clone())?;
-    if history.as_array().unwrap().iter().any(|r| r["journal_unverified"]==true || r["lifecycle"]["status"] != "reopened" && r["lifecycle"]["apps"].as_array().is_some_and(|apps|apps.iter().any(|a|a["quit_requested"]==true && a["reopened"]!=true))) { return Err("Mở lại ứng dụng đang chờ trong lịch sử trước khi cập nhật".into()); }
+    let history=read_reconciled_history(&app).await?;
+    if let Some(reason)=crate::journal_history::update_block_reason(&history) {return Err(reason);}
     state.shutdown(); app.state::<crate::engine_bridge::MetricsService>().shutdown();
     let start=Instant::now();
     while state.is_busy() || app.state::<crate::engine_bridge::MetricsService>().is_busy() {
@@ -89,7 +89,12 @@ fn manifest_policy(path: &str, mclean_system: bool) -> Result<Value,String> {
         if rows.len()>=20000 || started.elapsed()>Duration::from_secs(4) { return Err("scope_changed: partial manifest".into()); }
         let m=std::fs::symlink_metadata(&p).map_err(|e|e.to_string())?;
         let boundary=if m.is_symlink() {p.parent().unwrap().to_path_buf()} else {p.clone()};
-        if std::fs::canonicalize(&boundary).map_err(|e|e.to_string())? != boundary { return Err("path_changed".into()); }
+        // Match the native scanner's fixed macOS aliases without accepting arbitrary symlinks.
+        let text=boundary.to_string_lossy();
+        let native_boundary=if ["/tmp", "/var/log", "/var/tmp"].iter().any(|root| text.as_ref()==*root || text.starts_with(&format!("{root}/"))) {
+            std::path::PathBuf::from(format!("/private{text}"))
+        } else { boundary.clone() };
+        if std::fs::canonicalize(&boundary).map_err(|e|e.to_string())? != native_boundary { return Err("path_changed".into()); }
         if !mclean_system && ((!m.is_file() && !m.is_dir() && !m.is_symlink()) || (m.is_file() && m.nlink()!=1)) { return Err("protected_target: link/special file".into()); }
         rows.push(json!({"path":p.to_string_lossy(),"device":m.dev(),"inode":m.ino(),"mode":m.mode(),"size":m.size(),"modified_s":m.mtime(),"modified_ns":m.mtime_nsec(),"changed_s":m.ctime(),"changed_ns":m.ctime_nsec()}));
         if m.is_dir() && !mclean_system { for entry in std::fs::read_dir(&p).map_err(|e|e.to_string())? { pending.push(entry.map_err(|e|e.to_string())?.path()); } }
@@ -194,10 +199,24 @@ fn bind_identities(state: &EngineState, key: &str, payload: &mut Value, paths: &
         let before=known.get(path).ok_or("protected_target: partial/unsupported target")?;
         let mclean_system = scan["operation_scope"] == "quick_cleanup" && scan["categories"].as_array().is_some_and(|cats| cats.iter().any(|cat| cat["category"] == "system_junk" && cat["items"].as_array().is_some_and(|items| items.iter().any(|item| item["path"] == path.as_str() && item["rule_id"] == "mclean_system_junk"))));
         let manager_prune = scan["categories"].as_array().is_some_and(|cats| cats.iter().any(|cat| cat["items"].as_array().is_some_and(|items| items.iter().any(|item| item["path"] == path.as_str() && item["deletion_method"] == "pnpm_prune"))));
-        if manifest_policy(path, mclean_system || manager_prune)? != *before { return Err("scope_changed: nội dung thay đổi, hãy quét lại".into()); }
+        let live_cache = scan["operation_scope"] == "quick_cleanup" && scan["categories"].as_array().is_some_and(|cats| cats.iter().any(|cat| cat["category"] == "user_caches" && cat["items"].as_array().is_some_and(|items| items.iter().any(|item| item["path"] == path.as_str() && item["execution_mode"] == "live_cache_root" && item["is_cleanable"] == true))));
+        if !live_cache && manifest_policy(path, mclean_system || manager_prune)? != *before { return Err("scope_changed: nội dung thay đổi, hãy quét lại".into()); }
         snapshots.insert(path.clone(),before.clone());
     }
     payload["identities"] = Value::Object(stamps); payload["content_snapshots"]=Value::Object(snapshots); Ok(())
+}
+fn bind_quick_targets(state: &EngineState, key: &str, payload: &mut Value) -> Result<Vec<Value>,String> {
+    let original=payload["targets"].as_array().ok_or("invalid_request: targets")?.clone();
+    let mut targets=Vec::new();let mut identities=serde_json::Map::new();let mut snapshots=serde_json::Map::new();let mut skipped=Vec::new();
+    for target in original {
+        let path=target["path"].as_str().ok_or("invalid_request: path")?.to_string();
+        let mut proof=json!({});
+        match bind_identities(state,key,&mut proof,std::slice::from_ref(&path)) {
+            Ok(())=>{identities.insert(path.clone(),proof["identities"][&path].clone());snapshots.insert(path.clone(),proof["content_snapshots"][&path].clone());targets.push(target);}
+            Err(reason)=>skipped.push(json!({"path":path,"status":"skipped","affected_bytes":0,"method_used":target["deletion_method"],"error_message":reason})),
+        }
+    }
+    payload["targets"]=json!(targets);payload["identities"]=Value::Object(identities);payload["content_snapshots"]=Value::Object(snapshots);Ok(skipped)
 }
 fn bind_cleanup_scope(scan: &Value, payload: &mut Value) -> Result<(), String> {
     let scope = scan["operation_scope"].as_str().ok_or("scope_mismatch: hãy quét lại")?;
@@ -237,17 +256,37 @@ fn kill_owned_group(child: &mut std::process::Child) {
     let _=child.kill();
 }
 #[tauri::command]
-pub fn get_operation_history(window: tauri::WebviewWindow, app: AppHandle) -> Result<Value,String> {
+pub async fn get_operation_history(window: tauri::WebviewWindow, app: AppHandle, state: State<'_,EngineState>) -> Result<Value,String> {
     main_only(&window)?;
+    let _guard=state.mutation.lock().await;
+    read_reconciled_history(&app).await
+}
+async fn read_reconciled_history(app:&AppHandle)->Result<Value,String>{
     let root=app.path().app_data_dir().map_err(|e|e.to_string())?.join("operations");
+    let history=crate::journal_history::read(&root,std::time::SystemTime::now())?;
+    for row in history.as_array().unwrap() {
+        if row["journal_unverified"]!=true && crate::journal_history::pending_apps(row) {
+            let id=row["operation_id"].as_str().ok_or("invalid journal id")?;
+            // Native only observes already-running applications. No launch, Quit,
+            // or replay happens when the UI reads history or checks updater gates.
+            let result=execute(app.clone(),vec!["finish_apps".into(),"--stdin".into()],Some(json!({"operation_id":id,"reconcile_only":true})),operation_uuid(),Arc::new(AtomicBool::new(false))).await;
+            if let Err(reason)=result {return Err(format!("Không đối soát được lịch sử: {}",reason));}
+        }
+    }
     crate::journal_history::read(&root,std::time::SystemTime::now())
 }
+#[tauri::command]
+pub async fn acknowledge_operation(window:tauri::WebviewWindow,app:AppHandle,state:State<'_,EngineState>,operation_id:String)->Result<(),String>{
+    main_only(&window)?;let _guard=state.mutation.lock().await;
+    crate::journal_history::acknowledge(&app.path().app_data_dir().map_err(|e|e.to_string())?.join("operations"),&operation_id)
+}
+
 async fn execute(app: AppHandle, args: Vec<String>, payload: Option<Value>, operation_id: String, cancel: Arc<AtomicBool>) -> Result<Value, String> {
     let engine = resolve_engine_path(&app)?;
     let shutting_down=app.state::<EngineState>().shutting_down.clone();
     let active=app.state::<EngineState>().active_children.clone();
     let mutating=payload.is_some();
-    if payload.as_ref().is_some_and(|v|v.to_string().len()>=4*1024*1024) { return Err("invalid_request: target manifest quá lớn; chọn ít mục hơn".into()); }
+    if payload.as_ref().map(serialized_bytes).transpose()?.is_some_and(|n|n>=CLEANUP_REQUEST_LIMIT) { return Err("invalid_request: target manifest quá lớn; chọn ít mục hơn".into()); }
     active.fetch_add(1,Ordering::SeqCst);
     tokio::task::spawn_blocking(move || {
         struct Lease(Arc<AtomicUsize>);impl Drop for Lease {fn drop(&mut self){self.0.fetch_sub(1,Ordering::SeqCst);}}
@@ -257,7 +296,7 @@ async fn execute(app: AppHandle, args: Vec<String>, payload: Option<Value>, oper
         #[cfg(unix)] { use std::os::unix::process::CommandExt; unsafe { command.pre_exec(|| { unsafe extern "C" { fn setpgid(pid:i32,pgid:i32)->i32; } if setpgid(0,0)==0 { Ok(()) } else { Err(std::io::Error::last_os_error()) } }); } }
         let mut child=command.spawn().map_err(|e|e.to_string())?;
         let stdout = child.stdout.take().unwrap(); let stderr = child.stderr.take().unwrap(); let mut stdin = child.stdin.take().unwrap();
-        let writer = std::thread::spawn(move || -> std::io::Result<()> { if let Some(value) = payload { stdin.write_all(value.to_string().as_bytes())?; } Ok(()) });
+        let writer = std::thread::spawn(move || -> std::io::Result<()> { if let Some(value) = payload { serde_json::to_writer(&mut stdin,&value).map_err(std::io::Error::other)?; } Ok(()) });
         // Drain both pipes concurrently, including outputs larger than the OS pipe buffer.
         let reader = std::thread::spawn(move || -> Result<Vec<u8>, String> {
             let mut data = Vec::new(); stdout.take(32*1024*1024+1).read_to_end(&mut data).map_err(|e| e.to_string())?;
@@ -277,7 +316,7 @@ async fn execute(app: AppHandle, args: Vec<String>, payload: Option<Value>, oper
         let start = Instant::now(); let mut failure = None; let mut shutdown_since=None;
         let status = loop {
             if shutting_down.load(Ordering::SeqCst) && shutdown_since.is_none() { shutdown_since=Some(Instant::now()); }
-            if cancel.load(Ordering::Relaxed) || start.elapsed() > Duration::from_secs(120) || shutdown_since.is_some_and(|t| !mutating || t.elapsed()>Duration::from_secs(8)) {
+            if cancel.load(Ordering::Relaxed) || start.elapsed() > Duration::from_secs(if mutating {600} else {120}) || shutdown_since.is_some_and(|t| !mutating || t.elapsed()>Duration::from_secs(8)) {
                 failure = Some(if cancel.load(Ordering::Relaxed) { "Đã hủy thao tác" } else { "Engine quá thời gian chờ" }.to_string());
                 kill_owned_group(&mut child); break child.wait().map_err(|e| e.to_string());
             }
@@ -307,35 +346,19 @@ pub async fn start_scan(window: tauri::WebviewWindow, app: AppHandle, state: Sta
 }
 #[tauri::command]
 pub fn cancel_scan(state: State<'_, EngineState>, operation_id: String) { if let Some(flag) = state.cancellations.lock().unwrap().get(&operation_id) { flag.store(true, Ordering::Relaxed); } }
-// Split only approved targets; manifests are never truncated to fit transport.
-fn cleanup_batches(payload: &Value) -> Result<Vec<Value>, String> {
+// Keep one native process for a cleanup, including its single admin pass.
+const CLEANUP_REQUEST_LIMIT: usize = 64 * 1024 * 1024;
+fn validate_cleanup_request(payload:&Value)->Result<(),String>{
     let targets=payload["targets"].as_array().ok_or("invalid_request: targets")?;
-    let mut batches:Vec<Value>=Vec::new();
-    for target in targets {
-        let path=target["path"].as_str().ok_or("invalid_request: path")?;
-        let mut batch=payload.clone();
-        batch["targets"]=json!([target]);
-        for field in ["identities", "content_snapshots"] {
-            let entry=payload[field].get(path).ok_or("scope_changed: missing proof")?;
-            let mut entries=serde_json::Map::new(); entries.insert(path.into(),entry.clone());
-            batch[field]=Value::Object(entries);
-        }
-        // Reserve space for the host operation UUID/version added later.
-        if batch.to_string().len() >= 4*1024*1024-1024 {
-            return Err("invalid_request: manifest của một mục quá lớn; chưa dọn mục nào".into());
-        }
-        if let Some(last)=batches.last() {
-            let mut joined:Value=last.clone();
-            joined["targets"].as_array_mut().unwrap().push(target.clone());
-            for field in ["identities","content_snapshots"] {
-                joined[field].as_object_mut().unwrap().insert(path.into(),batch[field][path].clone());
-            }
-            if joined.to_string().len()<4*1024*1024-1024 { *batches.last_mut().unwrap()=joined; continue; }
-        }
-        batches.push(batch);
-    }
-    Ok(batches)
+    for target in targets {let path=target["path"].as_str().ok_or("invalid_request: path")?;for field in ["identities","content_snapshots"] {payload[field].get(path).ok_or("scope_changed: missing proof")?;}}
+    if serialized_bytes(payload)? >= CLEANUP_REQUEST_LIMIT-1024 {return Err("invalid_request: proof vượt giới hạn64MiB; chưa dọn mục nào".into());}Ok(())
 }
+fn serialized_bytes(payload:&Value)->Result<usize,String>{
+    // Count without allocating another full JSON string; execution streams stdin.
+    struct Counter(usize);impl std::io::Write for Counter {fn write(&mut self,b:&[u8])->std::io::Result<usize>{self.0+=b.len();Ok(b.len())}fn flush(&mut self)->std::io::Result<()>{Ok(())}}
+    let mut counter=Counter(0);serde_json::to_writer(&mut counter,payload).map_err(|e|e.to_string())?;Ok(counter.0)
+}
+
 #[tauri::command]
 pub async fn clean_items(window: tauri::WebviewWindow, app: AppHandle, state: State<'_, EngineState>, payload: Value, operation_id: String) -> Result<Value, String> {
     main_only(&window)?;
@@ -347,34 +370,20 @@ pub async fn clean_items(window: tauri::WebviewWindow, app: AppHandle, state: St
     let paths: Vec<String> = payload["targets"].as_array().unwrap().iter().map(|v| v["path"].as_str().unwrap().into()).collect();
     let mut payload = payload;
     bind_cleanup_scope(&scan, &mut payload)?;
-    bind_identities(&state, &key, &mut payload, &paths)?;
-    let batches=cleanup_batches(&payload)?;
-    let mut aggregate=json!({"permanently_freed_bytes":0,"trashed_bytes":0,"total_affected_bytes":0,"success_count":0,"failure_count":0,"duration_ms":0,"details":[],"operation_id":operation_id,"operation_ids":[]});
-    let all_targets=payload["targets"].as_array().unwrap().clone();
-    let mut processed=0;
-    for (index, mut batch) in batches.into_iter().enumerate() {
-        let batch_paths:Vec<String>=batch["targets"].as_array().unwrap().iter().map(|v|v["path"].as_str().unwrap().into()).collect();
-        bind_identities(&state,&key,&mut batch,&batch_paths).map_err(|e|format!("{}; đã dọn {} mục, xem lịch sử thao tác",e,aggregate["success_count"]))?;
-        let op=prepare_operation(&app,&state,&mut batch,if index==0 {&operation_id} else {""})?;
-        let result=execute(app.clone(),vec!["clean".into(),"--stdin".into()],Some(batch),operation_id.clone(),Arc::new(AtomicBool::new(false))).await;
-        record_result(&state,&op,&result);
-        let result=result.map_err(|e|format!("{}; đã dọn {} mục, xem lịch sử thao tác",e,aggregate["success_count"]))?;
-        for field in ["protocol_version","policy_version","platform","operation_scope","size_kind"] { aggregate[field]=result[field].clone(); }
-        for field in ["permanently_freed_bytes","trashed_bytes","total_affected_bytes","success_count","failure_count","duration_ms"] {
-            aggregate[field]=json!(aggregate[field].as_u64().unwrap_or(0)+result[field].as_u64().unwrap_or(0));
-        }
-        if let Some(details)=result["details"].as_array() { aggregate["details"].as_array_mut().unwrap().extend(details.iter().cloned()); }
-        aggregate["operation_ids"].as_array_mut().unwrap().push(json!(op));
-        processed += batch_paths.len();
-        if result["failure_count"].as_u64().unwrap_or(0)>0 {
-            for remaining in &all_targets[processed..] {
-                aggregate["details"].as_array_mut().unwrap().push(json!({"path":remaining["path"],"status":"skipped","affected_bytes":0,"method_used":remaining["deletion_method"],"error_message":"Dừng sau lỗi ở lô trước; chưa dọn mục này"}));
-                aggregate["failure_count"]=json!(aggregate["failure_count"].as_u64().unwrap_or(0)+1);
-            }
-            break;
-        }
-    }
-    Ok(aggregate)
+    let skipped=if payload["operation_scope"]=="quick_cleanup" {bind_quick_targets(&state,&key,&mut payload)?} else {bind_identities(&state,&key,&mut payload,&paths)?;Vec::new()};
+    validate_cleanup_request(&payload)?;
+    let op=prepare_operation(&app,&state,&mut payload,&operation_id)?;
+    let result=if payload["targets"].as_array().unwrap().is_empty(){
+        let mut result=json!({"native_execution":"not_started","permanently_freed_bytes":0,"trashed_bytes":0,"total_affected_bytes":0,"success_count":0,"failure_count":0,"duration_ms":0,"details":[],"operation_id":op,"operation_scope":payload["operation_scope"],"size_kind":"logical_estimate"});request_version(&mut result);Ok(result)
+    } else {
+        execute(app.clone(),vec!["clean".into(),"--stdin".into()],Some(payload),operation_id,Arc::new(AtomicBool::new(false))).await
+    };
+    let result=result.map(|mut result|{
+        result["operation_ids"]=json!([op]);
+        if !skipped.is_empty(){result["host_preflight_skipped"]=json!(skipped);result["details"].as_array_mut().unwrap().extend(skipped);result["failure_count"]=json!(result["details"].as_array().unwrap().iter().filter(|d|d["status"]!="success").count());}
+        result
+    });
+    record_result(&state,&op,&result);result
 }
 #[tauri::command]
 pub async fn prepare_cleanup_apps(window: tauri::WebviewWindow, app: AppHandle, state: State<'_, EngineState>, payload: Value) -> Result<Value,String> {
@@ -530,6 +539,82 @@ fn open_path(path: String, terminal: bool) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test] fn quick_changed_target_is_skipped_without_blocking_unchanged_sibling() {
+        let root=std::env::temp_dir().join(format!("vxclean_preflight_{}",operation_uuid()));std::fs::create_dir(&root).unwrap();
+        let root=std::fs::canonicalize(root).unwrap();let changed=root.join("changed");let kept=root.join("kept");
+        std::fs::write(&changed,b"old").unwrap();std::fs::write(&kept,b"keep").unwrap();
+        let state=EngineState::default();let rows=vec![changed.clone(),kept.clone()].into_iter().map(|path|json!({"path":path,"is_cleanable":true,"deletion_method":"remove_item","rule_id":"cache"})).collect::<Vec<_>>();
+        remember(&state,"live".into(),json!({"operation_scope":"quick_cleanup","categories":[{"category":"user_caches","items":rows}]}));
+        std::fs::write(&changed,b"new content").unwrap();
+        let mut payload=json!({"targets":[{"path":changed,"deletion_method":"remove_item"},{"path":kept,"deletion_method":"remove_item"}]});
+        let skipped=bind_quick_targets(&state,"live",&mut payload).unwrap();assert_eq!(skipped.len(),1);assert_eq!(skipped[0]["path"],json!(changed));
+        assert_eq!(payload["targets"].as_array().unwrap().len(),1);assert_eq!(payload["targets"][0]["path"],json!(kept));assert_eq!(std::fs::read(changed).unwrap(),b"new content");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test] fn quick_chrome_content_changes_keep_original_root_grant() {
+        let root=std::env::temp_dir().join(format!("vxclean_chrome_{}",operation_uuid()));std::fs::create_dir(&root).unwrap();
+        let root=std::fs::canonicalize(root).unwrap();let data=root.join("data");std::fs::write(&data,b"old").unwrap();
+        let state=EngineState::default();remember(&state,"chrome".into(),json!({"operation_scope":"quick_cleanup","categories":[{"category":"user_caches","items":[{"path":root,"rule_id":"chrome_quick_cache","execution_mode":"live_cache_root","is_cleanable":true,"deletion_method":"remove_item"}]}]}));
+        std::fs::write(&data,b"new content").unwrap();std::fs::write(root.join("new"),b"new").unwrap();
+        let mut payload=json!({"targets":[{"path":root,"deletion_method":"remove_item"}]});
+        assert!(bind_quick_targets(&state,"chrome",&mut payload).unwrap().is_empty());
+        assert_eq!(payload["content_snapshots"][root.to_str().unwrap()].as_array().unwrap().len(),2);
+        let moved=root.with_extension("old");std::fs::rename(&root,&moved).unwrap();std::fs::create_dir(&root).unwrap();
+        let mut changed=json!({"targets":[{"path":root,"deletion_method":"remove_item"}]});assert_eq!(bind_quick_targets(&state,"chrome",&mut changed).unwrap().len(),1);
+        std::fs::remove_dir_all(root).unwrap();std::fs::remove_dir_all(moved).unwrap();
+    }
+    #[test] fn quick_codex_content_changes_keep_identity_grant() {
+        for (category,rule) in [("user_caches","ai_frontend_quick_cache")] {
+            let root=std::env::temp_dir().join(format!("vxclean_live_{}",operation_uuid()));std::fs::create_dir(&root).unwrap();let root=std::fs::canonicalize(root).unwrap();
+            let path=root.join("selected");std::fs::write(&path,b"old").unwrap();let state=EngineState::default();
+            remember(&state,"live".into(),json!({"operation_scope":"quick_cleanup","categories":[{"category":category,"items":[{"path":path,"rule_id":rule,"execution_mode":"live_cache_root","is_cleanable":true,"deletion_method":"remove_item"}]}]}));
+            std::fs::write(&path,b"new content").unwrap();let mut payload=json!({"targets":[{"path":path,"deletion_method":"remove_item"}]});assert!(bind_quick_targets(&state,"live",&mut payload).unwrap().is_empty());
+            let moved=root.join("old_inode");std::fs::rename(&path,&moved).unwrap();std::fs::write(&path,b"replacement").unwrap();let mut changed=json!({"targets":[{"path":path,"deletion_method":"remove_item"}]});assert_eq!(bind_quick_targets(&state,"live",&mut changed).unwrap().len(),1);
+            std::fs::remove_dir_all(root).unwrap();
+        }
+    }
+    #[test] fn macos_tmp_alias_manifest_binds_but_custom_symlink_is_rejected() {
+        #[cfg(target_os="macos")] {
+            let path=format!("/tmp/vxclean_alias_fixture_{}",operation_uuid());
+            std::fs::create_dir(&path).unwrap();
+            std::fs::write(format!("{path}/keep"),vec![42u8;4096]).unwrap();
+            let state=EngineState::default();
+            let scan=json!({"operation_scope":"quick_cleanup","categories":[{"category":"system_junk","items":[{"path":path,"deletion_method":"remove_item","rule_id":"mclean_system_junk","is_cleanable":true}]}]});
+            remember(&state,"alias".into(),scan);
+            let mut payload=json!({});bind_identities(&state,"alias",&mut payload,std::slice::from_ref(&path)).unwrap();
+            assert_eq!(payload["content_snapshots"][&path][0]["path"],path);
+            let link=format!("{path}_link");std::os::unix::fs::symlink(&path,&link).unwrap();
+            assert!(manifest_policy(&format!("{link}/keep"),true).is_err());
+            std::fs::remove_file(link).unwrap();
+            if let Ok(binary)=std::env::var("VXCLEAN_ALIAS_NATIVE_BINARY") {
+                payload["operation_scope"]=json!("quick_cleanup");payload["confirm_direct_delete"]=json!(true);
+                payload["targets"]=json!([{"path":path,"deletion_method":"remove_item"}]);request_version(&mut payload);
+                payload["operation_id"]=json!(operation_uuid());
+                if std::env::var_os("VXCLEAN_LARGE_PAYLOAD_PROBE").is_some() {
+                    payload["transport_probe"]=json!("x".repeat(5*1024*1024));
+                    validate_cleanup_request(&payload).unwrap();
+                }
+                let mut child=Command::new(binary).args(["clean","--stdin"]).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+                child.stdin.take().unwrap().write_all(payload.to_string().as_bytes()).unwrap();
+                let out=child.wait_with_output().unwrap();assert!(out.status.success(),"{}",String::from_utf8_lossy(&out.stderr));
+                let result:Value=serde_json::from_slice(&out.stdout).unwrap();assert_eq!(result["success_count"],1,"{result}");assert!(!std::path::Path::new(&path).exists());
+            } else {std::fs::remove_dir_all(path).unwrap();}
+        }
+    }
+    #[test] fn production_scan_manifest_probe() {
+        let Ok(path)=std::env::var("VXCLEAN_SCAN_PROBE") else {return};
+        let scan:Value=serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        let mut failures=Vec::new();
+        for cat in scan["categories"].as_array().unwrap() {
+            for item in cat["items"].as_array().unwrap() {
+                if item["is_cleanable"]!=true {continue;}
+                let path=item["path"].as_str().unwrap();
+                if let Err(error)=manifest_policy(path,item["rule_id"]=="mclean_system_junk" || item["deletion_method"]=="pnpm_prune") {failures.push(json!({"path":path,"error":error}));}
+            }
+        }
+        println!("manifest_probe_failures={}",json!(failures));
+        assert!(failures.is_empty(),"Scanner granted targets without usable host proof");
+    }
     #[test] fn quick_payload_native_roundtrip() {
         let Ok(binary)=std::env::var("VXCLEAN_FIXTURE_BINARY") else {return};
         let home=std::env::var("VXCLEAN_TEST_HOME").unwrap();
@@ -546,10 +631,10 @@ mod tests {
         let mut payload=json!({"protocol_version":"2.0","platform":"macos","policy_version":"1.0.0","targets":[{"path":name,"deletion_method":"remove_item"},{"path":system_path.to_string_lossy(),"deletion_method":"remove_item"}],"confirm_direct_delete":true});
         let mut allowed=HashMap::new();gather(&recalled(&state,"quick_cleanup").unwrap(),&mut allowed);validate_targets(&payload["targets"],&allowed).unwrap();
         let scan=recalled(&state,"quick_cleanup").unwrap(); bind_cleanup_scope(&scan,&mut payload).unwrap(); bind_identities(&state,"quick_cleanup",&mut payload,&[name,system_path.to_string_lossy().to_string()]).unwrap();
-        let mut batches=cleanup_batches(&payload).unwrap();assert_eq!(batches.len(),1);
-        batches[0]["operation_id"]=json!(operation_uuid());
+        validate_cleanup_request(&payload).unwrap();
+        payload["operation_id"]=json!(operation_uuid());
         let mut child=Command::new(&binary).args(["clean","--stdin"]).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
-        child.stdin.take().unwrap().write_all(batches[0].to_string().as_bytes()).unwrap();let out=child.wait_with_output().unwrap();assert!(out.status.success(),"{}",String::from_utf8_lossy(&out.stderr));
+        child.stdin.take().unwrap().write_all(payload.to_string().as_bytes()).unwrap();let out=child.wait_with_output().unwrap();assert!(out.status.success(),"{}",String::from_utf8_lossy(&out.stderr));
         let result:Value=serde_json::from_slice(&out.stdout).unwrap();assert_eq!(result["success_count"],2);assert!(!path.join("payload").exists());assert!(!system_path.exists());assert_eq!(std::fs::read(alias).unwrap(),vec![7u8;4096]);
     }
     #[test] fn orphan_payload_native_roundtrip() {
@@ -638,32 +723,24 @@ mod tests {
 }
 
 #[cfg(test)]
-mod cleanup_batch_tests {
+mod cleanup_request_tests {
     use super::*;
     #[test]
-    fn splits_large_combined_proofs_without_losing_targets() {
+    fn large_combined_proofs_fit_single_request_without_copying() {
         let proof=json!({"proof":"x".repeat(2300000)});
         let p=json!({"targets":[{"path":"/a"},{"path":"/b"}],"identities":{"/a":[1,2],"/b":[3,4]},"content_snapshots":{"/a":proof,"/b":proof},"operation_scope":"detailed_cleanup","confirm_direct_delete":true});
-        assert!(p.to_string().len()>4*1024*1024);
-        let b=cleanup_batches(&p).unwrap(); assert_eq!(b.len(),2);
-        for (i,path) in ["/a","/b"].iter().enumerate() {
-            assert_eq!(b[i]["targets"],json!([{"path":path}]));
-            assert_eq!(b[i]["content_snapshots"].as_object().unwrap().len(),1);
-            assert_eq!(b[i]["content_snapshots"][*path],p["content_snapshots"][*path]);
-            assert_eq!(b[i]["operation_scope"],p["operation_scope"]);
-            assert_eq!(b[i]["confirm_direct_delete"],true);
-            assert!(b[i].to_string().len()<4*1024*1024-1024);
-        }
+        assert!(serialized_bytes(&p).unwrap()>4*1024*1024);
+        validate_cleanup_request(&p).unwrap(); // Both full proofs fit one native request.
     }
     #[test]
-    fn small_targets_share_a_bounded_batch_with_all_proofs() {
+    fn small_request_keeps_all_proofs() {
         let p=json!({"targets":[{"path":"/a"},{"path":"/b"}],"identities":{"/a":[1,2],"/b":[3,4]},"content_snapshots":{"/a":[],"/b":[]},"operation_scope":"detailed_cleanup"});
-        let b=cleanup_batches(&p).unwrap(); assert_eq!(b.len(),1);
-        assert_eq!(b[0],p);
+        validate_cleanup_request(&p).unwrap();
+        assert!(p["content_snapshots"].is_object());
     }
     #[test]
-    fn oversize_single_proof_rejects_all_batches() {
-        let p=json!({"targets":[{"path":"/a"},{"path":"/b"}],"identities":{"/a":[1,2],"/b":[3,4]},"content_snapshots":{"/a":[],"/b":"x".repeat(4*1024*1024)}});
-        assert!(cleanup_batches(&p).is_err());
+    fn oversize_request_is_rejected_before_execution() {
+        let p=json!({"targets":[{"path":"/a"},{"path":"/b"}],"identities":{"/a":[1,2],"/b":[3,4]},"content_snapshots":{"/a":[],"/b":"x".repeat(CLEANUP_REQUEST_LIMIT)}});
+        assert!(validate_cleanup_request(&p).is_err());
     }
 }
