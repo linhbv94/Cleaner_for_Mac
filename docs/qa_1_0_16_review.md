@@ -1,14 +1,27 @@
-# VXClean1.0.16 — QA độc lập trước publish
+# VXClean 1.0.16 — QA độc lập và phát hành
 
-Ngày2026-10-12. User đóng QA trước, giao QA mới độc lập và publish. Không sử dụng kết luận QA cũ như bằng chứng mới.
+Ngày: 2026-10-12. User xác nhận đóng QA trước, giao một lượt QA độc lập mới rồi publish. Lượt mới chưa được user đóng.
 
-- Review source: Lens query trả direct-child DTO từ snapshot Rust, không đọc filesystem/cấp grant. Host giữ2 cây/5phút; worker read-only, timeout120giây/output gzip32MiB, hủy bằng cơ chế process của host. Symlink/reparse không traversal; trạng thái partial không bị coi là scan đầy đủ.
-- Uninstall grant là unit root user chọn; native revalidate root identity/metadata, bundleID/version, running app, association/SIP/self trước Trash; không áp dụng root-only cho Quick/Detail/Lens.
-- Checks mới:43Rust tests,35native fixture groups,9manager,frontend,folder cache/history/retention/release guards/selection/geometry đạt. Rust có fixture50.050files/depth100, query sau khi xóa fixture và TTL/mutation/no grant. Mutation tests chỉ trên dữ liệu tổng hợp.
-- Native UI gói1.0.15 cũ: tạo fixture riêng, scan lần đầu, thêm file sau scan, lần đầu vào branch/deep/leaf vẫn chỉ thấy file gốc và không hiện scan. Vùng/private bị guard từ chối đúng policy.
-- **Bug QA mới tìm ra:** deep-trash re-scan có grant mới nhưng confirmation dùng size snapshot cũ. Fixture original.bin tăng4.1KB→4MB, confirmation vẫn4.1KB; đã Hủy, không Trash. Sửa preview lấy item mới vừa scan; Đã rebuild/ký gói15, QA fixture cùng kịch bản hiện đúng4.19MB; Hủy giữfile4MiB. Refresh thấyfile tạo sau scan; Cancel scanHome trả UI và worker không còn.
-- Chưa thử Intel GUI/macOS cũ/Windows full app/updater public install-restart. Không cấp FDA/admin, gỡ app hay dọn dữ liệu user trong lượt QA này.
+## QA mới
 
-Remote CI và verification/publish sẽ ghi khi hoàn tất.
+- Review source: Space Lens giữ snapshot Rust ở host, trả danh sách con từ bộ nhớ; query không đọc filesystem hoặc cấp quyền xóa. Host giữ tối đa hai cây trong năm phút; worker có progress, cancel, timeout 120 giây và giới hạn output gzip 32 MiB. Giới hạn output không phải trần RAM.
+- Uninstall cấp quyền cho toàn root user chọn; native kiểm tra root identity/metadata, bundle ID/version, app đã thoát, association/SIP/self trước Trash. Root-only không được áp dụng sang Quick/Detail/Lens. Scope vẫn theo spec 04/15/24.
+- Chạy lại độc lập: 43 Rust tests, 35 nhóm native fixtures, 9 nhóm manager, frontend, folder cache/history, retention 10, selection 5, geometry 18 và 7 release guards đều đạt. Rust có fixture 50.050 file, cây sâu 100 tầng, query sau khi xóa fixture, TTL/mutation và no-grant. Scanner cùng source type-check Windows MSVC đạt; full app/runtime Windows chưa thử.
+- Native UI: scan fixture riêng, thêm file sau scan rồi đi lần đầu vào branch/deep/leaf vẫn dùng snapshot cũ và không scan lại; Quét lại thấy file mới. Guard từ chối vùng /private. Hủy scan Home trả lại UI, worker kết thúc; không coi đó là Home scan đầy đủ.
+- **Lỗi tìm thấy và đã sửa:** Trash từ nhánh sâu quét parent mới nhưng confirmation lấy size cũ. Fixture tăng từ 4,1 KB lên 4 MiB mà preview vẫn 4,1 KB. Sửa lấy item mới vừa quét; gói rebuild hiển thị đúng 4,19 MB. Hủy giữ file, marker ngoài không bị tác động; đã dọn fixture của QA.
+- Gói local 1.0.16 App/DMG/updater build đạt, codesign deep/strict, chữ ký thật và tamper rejection đạt. GUI preview đã thử trên source sửa trong gói local 1.0.15; bump metadata sang 1.0.16 không thay logic đó. Chọn 1.0.16 để app local 1.0.15 đang cài có thể nhận bản sửa qua updater.
 
-- Phát hành1.0.16 để local1.0.15 đang cài có thể nhận updater; tag15 chưa tạo. Metadata bump không đổi code vừa QA. Gói16 sẽ kiểm lại version/signature, remote CI hai Mac trước publish.
+## Phát hành và bằng chứng
+
+- [VXClean 1.0.16](https://github.com/linhbv94/Cleaner_for_Mac/releases/tag/v1.0.16) đã publish stable/latest, release ID `410459951`, tag commit `374845e4fe6ac3757b60acd9a793bf2a20dcb900`.
+- [PR #3](https://github.com/linhbv94/Cleaner_for_Mac/pull/3) merge sau [PR CI](https://github.com/linhbv94/Cleaner_for_Mac/actions/runs/38232036841) cả hai Mac đạt; main checks `38233409157` cũng đạt.
+- [Release CI](https://github.com/linhbv94/Cleaner_for_Mac/actions/runs/38233420313) hai build và validate đạt; [publish](https://github.com/linhbv94/Cleaner_for_Mac/actions/runs/38236888275) success đúng tag.
+- Tải thật năm assets: version/layout/URL/kích thước/GitHub SHA-256 digest đúng. Hai chữ ký updater đạt; sửa một byte bị từ chối. App hai kiến trúc có metadata/icon/codesign deep/strict đúng và không chứa hook test. Hai DMG checksum hợp lệ; đã mount readonly, đối chiếu host/engine/icon với updater app và detach.
+- Manifest stable/latest 1.0.16 và năm assets public HTTP200 không dùng token; platform URLs khớp manifest đã xác minh.
+- Mở lại app đang cài 1.0.15: startup tự thông báo có 1.0.16. Không download/install/restart, không thay app trong Applications.
+- [Evidence](qa_1_0_16_evidence.json) ghi source hash, CI IDs, asset digests và từng mức kiểm chứng.
+
+## Giới hạn
+
+- Không gỡ app, dọn file user, cấp FDA/admin hoặc đổi quyền hệ thống trong lượt này. Mutation fixtures chỉ dùng dữ liệu tổng hợp.
+- Intel GUI/macOS cũ, full Windows app/runtime, Cancel hộp xác thực OS mới và updater download/install/restart chưa thử. Detailed vẫn đang hoàn thiện; không tuyên bố an toàn mọi dữ liệu thật hoặc scan toàn máy đầy đủ. Gói Mac ký ad-hoc, chưa notarize.
