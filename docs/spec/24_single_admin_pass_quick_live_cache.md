@@ -54,3 +54,32 @@ QA GUI1.0.6 dọn69/92mục,1.131.565.337bytes;4target đổi sau scan và19admi
 ## Thứ tự item khi expand — 2026-10-12
 
 - Danh sách item trong mỗi card kết quả quét sắp theo size_bytes giảm dần (lớn trước, nhỏ sau). Chỉ đổi thứ tự hiển thị, giữ path làm key và giữ nguyên lựa chọn/scope dọn. Không mutate mảng items của scan ticket.
+
+## Gỡ app theo root và cache điều hướng Lens — 2026-10-12 (Lens1.0.13 đã thay bởi1.0.15)
+
+- Gỡ app cấp grant toàn root đã chọn, không cấp quyền theo nội dung từng cache file. Snapshot root identity/metadata được đối soát trước thao tác; native vẫn kiểm tra bundle ID/version, app đã thoát, SIP/self protection và association từng path. Chuyển root vào Trash theo đơn vị, không duyệt/xóa theo symlink con. Root symlink/special/hardlink vẫn bị chặn. Discovery chứa project vẫn opt-in, không tự tick.
+- Không áp dụng root grant này cho Quick/Detail hoặc Lens Trash. Lỗi preflight nêu path chưa xác minh, không ghi đã gỡ thành công.
+- Lens giữ tối đa16 kết quả folder đã quét trong5 phút; về folder cha hoặc folder đã xem dùng cache. Folder mới cần scan một lần. Quét lại bỏ cache; mọi mutation invalidate cache. Không dùng cache hiển thị để cấp quyền xóa.
+
+## Cây điều hướng Space Lens đa nền tảng — 2026-10-12 (thiết kế1.0.14 bị thay vì chưa đạt)
+
+- Scanner giữ cây mới nằm trong Rust dùng chung Mac/Windows; không phụ thuộc Swift. Một traversal tính size và giữ metadata điều hướng, không đọc nội dung hoặc theo symlink. Unix dùng allocated bytes, Windows hiện dùng logical bytes và báo size_kind rõ.
+- Giữ tối đa50.000 node/48 tầng mỗi snapshot; nhánh vượt giới hạn có children_complete=false, mở rộng riêng khi vào. Không cắt mặc định3 tầng. Cache5 phút, refresh/mutation invalidate.
+- Navigation không cấp quyền xóa: chỉ tạo proof cho con trực tiếp root. Trước xác nhận Trash ở nhánh sâu, quét lại folder đang xem để tạo proof mới; native macOS giữ revalidation hiện tại. Windows chưa có native Trash tương ứng, không tuyên bố Windows mutation đã hỗ trợ.
+- Nghiệm thu fixture: nested tree, size, symlink/package/denied, cancellation, retention, navigation bridge call count; đo thời gian thật, không cam kết số chưa đo.
+
+- Runtime scan Rust chạy ở worker process chính executable với mode chỉ đọc `--lens-scan`, trước khởi tạo Tauri/UI. Host dùng pipe/progress, hủy/timeout120 giây/kill process group như engine hiện tại: syscall đọc folder bị kẹt không được giữ thread trong app vô hạn. Progress heartbeat250ms, không phát một event UI cho mỗi node.
+
+## Cây điều hướng hiện hành1.0.15: sửa nghiệm thu Library lớn — 2026-10-12
+
+- User tái hiện Library → Application Support vẫn quét lại. Giới hạn50.000node làm rơi cấu trúc cây; không còn dùng giới hạn node/depth để cắt cây rồi quét lại khi điều hướng.
+- Scanner Rust worker giữ toàn bộ metadata đọc được theo cấu trúc phẳng gọn, không đọc contents, không theo links/reparse. Host Rust giữ snapshot5 phút; UI chỉ nhận root + direct children cho folder đang xem. Query subtree lấy metadata snapshot, không gọi scanner/read filesystem.
+- Hết TTL, chọn folder ngoài root đã quét, refresh hoặc mutation mới cần scan. Permission-denied giữ node/partial và không tự quét lại khi đi vào. Packages vẫn không drill theo Finder semantics.
+- Tách navigation và mutation proof như trước: query không tạo grant; Trash nhánh sâu vẫn xác minh riêng trước xác nhận, không dùng cây UI làm quyền xóa.
+- Nghiệm thu bắt buộc nhánh thật Library → Application Support → Google → Chrome và fixture >50.000 entries, tạo file mới sau scan không xuất hiện khi lần đầu vào child, chỉ xuất hiện khi refresh. Scanner/host/query dùngRust, Windows type-check scanner; không tuyên bố full Win runtime.
+
+- Snapshot phẳng truyền worker → host qua gzip rồi deserialize trực tiếp typed để tránh nhiều bản sao JSON; không truyền toàn cây sang WebView. Host giữ tối đa2 snapshot, timer5 phút giải phóng RAM; FE tối đa16 folder DTO. Output compressed32MiB/timeout120s là lỗi có báo, không truncate rồi scan lại.
+
+### QA độc lập trước publish1.0.15
+
+- Khi Trash từ nhánh Lens cached phải scan parent mới trước confirmation, preview lấy name/size từ item vừa scan. Không dùng metadata snapshot cũ để mô tả grant mới; nếu mục không còn cleanable thì chặn. Native vẫn revalidate identity/content trước mutation.

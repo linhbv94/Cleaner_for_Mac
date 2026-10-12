@@ -23,6 +23,8 @@ import { SpaceLensNode, SpaceLensResponse } from '../types';
 import * as bridge from '../services/tauri_bridge';
 import { formatBytes } from '../services/mock_engine';
 import { packCircles } from './circle_packing';
+import { FolderScanCache } from '../services/folder_scan_cache';
+import { scanRetention } from '../services/scan_retention';
 import { PageHeader } from './page_header';
 
 interface ContextMenuState {
@@ -80,6 +82,9 @@ export const SpaceLensView: React.FC = () => {
     height: 420,
   });
 
+  const proofRoot = useRef<string>('');
+  const navigationTicket = useRef<string>('');
+  const folderCache = useRef(new FolderScanCache<SpaceLensResponse>());
   const generation = useRef(0);
   const isMountedRef = useRef(true);
   const isCancelledRef = useRef<boolean>(false);
@@ -115,7 +120,29 @@ export const SpaceLensView: React.FC = () => {
     return () => ro.disconnect();
   }, [viewMode]);
 
-  const analyzePath = async (target: string) => {
+  useEffect(() => {
+    let revision = scanRetention.revision;
+    return scanRetention.subscribe(() => {
+      if (revision !== scanRetention.revision) {revision = scanRetention.revision; folderCache.current.clear(); navigationTicket.current='';}
+    });
+  }, []);
+  const analyzePath = async (target: string, force = false) => {
+    if (force) {folderCache.current.clear();navigationTicket.current='';}
+    const revision = scanRetention.revision;
+    const queryGeneration=++generation.current;
+    let cached:SpaceLensResponse|undefined;
+    try {cached=await folderCache.current.resolve(target,revision,navigationTicket.current,bridge.fetchLensFolder);}
+    catch(error){if(queryGeneration===generation.current)setActionMessage(bridge.errorText(error));return;}
+    if(queryGeneration!==generation.current || revision!==scanRetention.revision)return;
+    if (cached) {
+      generation.current++; isCancelledRef.current = true;
+      setCurrentPath(cached.root_path); setCurrentNode(cached.root_node);
+      proofRoot.current=cached.scan_root_path??cached.root_path;navigationTicket.current=cached.lens_id??'';
+      setLensId(cached.lens_id ?? 'mock_lens'); setHistory([cached.root_node]);
+      setSelectedNode(null); setLoading(false); setScanProgress(null);setActionMessage(null);
+      setIsPartial(Boolean(cached.is_partial) || Boolean(cached.root_node.children?.some(c=>c.is_access_denied)));
+      setContextMenu(prev=>({...prev,visible:false})); return;
+    }
     const runId = ++generation.current;
     isCancelledRef.current = false;
     setLoading(true);
@@ -141,6 +168,9 @@ export const SpaceLensView: React.FC = () => {
 
       if (runId !== generation.current || isCancelledRef.current) return;
 
+      if (revision !== scanRetention.revision) {setActionMessage('Dữ liệu đã thay đổi; hãy quét lại folder.');return;}
+      folderCache.current.put([target,res.root_path],res,revision);
+      proofRoot.current=res.scan_root_path??res.root_path;navigationTicket.current=res.lens_id??'';
       setLensId(res.lens_id ?? 'mock_lens');
       setCurrentPath(res.root_path);
       setCurrentNode(res.root_node);
@@ -164,7 +194,7 @@ export const SpaceLensView: React.FC = () => {
 
   useEffect(() => {
     isMountedRef.current = true;
-    const timer = setTimeout(() => { void analyzePath(currentPath); }, 0);
+    const timer = setTimeout(() => { void analyzePath(currentPath,true); }, 0);
     return () => {
       clearTimeout(timer);
       isMountedRef.current = false;
@@ -186,7 +216,7 @@ export const SpaceLensView: React.FC = () => {
       if (!isMountedRef.current) return;
       if (picked) {
         setCurrentPath(picked);
-        void analyzePath(picked);
+        void analyzePath(picked,true);
       }
     } catch (e) {
       setActionMessage(bridge.errorText(e));
@@ -225,7 +255,7 @@ export const SpaceLensView: React.FC = () => {
     });
   }, [currentNode]);
 
-  // Backend Lens mới: DTO chỉ direct children. Double click directory gọi analyzePath(node.path) scan subtree
+  // Retained subtree navigation; only unretained branches require a scan.
   const handleDrillDown = async (node: SpaceLensNode) => {
     if (!node.is_directory || node.is_package || node.is_access_denied) return;
     setCurrentPath(node.path);
@@ -254,19 +284,33 @@ export const SpaceLensView: React.FC = () => {
   };
 
   const handleMoveToTrash = async (node: SpaceLensNode) => {
+    if(isTrashing)return;
+    let ticket=lensId;
+    let confirmedNode=node;
+    // Deep navigation does not grant mutation authority. Refresh current parent before confirmation.
+    if(proofRoot.current!==currentPath) {
+      setIsTrashing(true);
+      try {const fresh=await bridge.runAnalyzeSpaceLens(currentPath);
+        const refreshedNode=fresh.root_node.children?.find(child=>child.path===node.path && child.can_trash===true);
+        if(!refreshedNode)throw new Error('Mục đã thay đổi hoặc không được phép chuyển vào Thùng rác.');
+        confirmedNode=refreshedNode;
+        ticket=fresh.lens_id??'';
+      } catch(error) {setActionMessage(bridge.errorText(error));setIsTrashing(false);return;}
+      setIsTrashing(false);
+    }
     if (
       isTrashing ||
       !(await confirm(
-        `Chuyển "${node.name}" (${formatBytes(
-          node.size_bytes
+        `Chuyển "${confirmedNode.name}" (${formatBytes(
+          confirmedNode.size_bytes
         )}) vào Thùng rác? Dữ liệu sẽ còn trên đĩa cho tới khi làm rỗng Thùng rác.`
       ))
     )
       return;
     setIsTrashing(true);
     try {
-      const result = await bridge.trashLensItem(lensId, node.path);
-      await analyzePath(currentPath);
+      const result = await bridge.trashLensItem(ticket, node.path);
+      await analyzePath(currentPath,true);
       setActionMessage(
         result.failure_count
           ? result.details
@@ -328,7 +372,7 @@ export const SpaceLensView: React.FC = () => {
             type="button"
             onClick={handlePickFolder}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-cyan-500/30 hover:border-cyan-500/60 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 transition-colors cursor-pointer"
-            title="Chọn thư mục qua hộp thoại macOS"
+            title="Chọn thư mục qua hộp thoại hệ điều hành"
           >
             <FolderOpen size={13} className="text-cyan-600 dark:text-cyan-400" />
             <span>Chọn thư mục...</span>
@@ -339,7 +383,7 @@ export const SpaceLensView: React.FC = () => {
             value={currentPath}
             onChange={(e) => setCurrentPath(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && !loading) void analyzePath(currentPath);
+              if (e.key === 'Enter' && !loading) void analyzePath(currentPath,true);
             }}
             placeholder="~/ hoặc /Applications"
             className="w-56 rounded-lg bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 px-2.5 py-1.5 text-xs font-mono text-slate-900 dark:text-slate-200 focus:outline-none focus:border-cyan-500 shadow-2xs"
@@ -377,7 +421,7 @@ export const SpaceLensView: React.FC = () => {
 
           <button
             type="button"
-            onClick={() => analyzePath(currentPath)}
+            onClick={() => analyzePath(currentPath,true)}
             disabled={loading}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-300 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-600 bg-white/60 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors cursor-pointer disabled:opacity-50"
           >
@@ -406,7 +450,7 @@ export const SpaceLensView: React.FC = () => {
             </button>
             <button
               type="button"
-              onClick={() => analyzePath(currentPath)}
+              onClick={() => analyzePath(currentPath,true)}
               className="px-2.5 py-0.5 rounded border border-amber-500/40 text-amber-700 dark:text-amber-300 text-[11px] hover:bg-amber-500/15 transition-colors cursor-pointer"
             >
               Quét lại sau cấp quyền

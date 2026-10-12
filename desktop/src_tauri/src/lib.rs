@@ -2,6 +2,7 @@ mod journal_history;
 pub mod engine_bridge;
 pub mod models;
 pub mod maintenance_bridge;
+mod lens_scanner;
 pub mod menubar;
 
 pub use engine_bridge::*;
@@ -107,7 +108,7 @@ pub fn run() {
             maintenance_bridge::start_scan, maintenance_bridge::cancel_scan,
             maintenance_bridge::clean_items, maintenance_bridge::get_installed_apps,
             maintenance_bridge::uninstall_app, maintenance_bridge::get_orphans,
-            maintenance_bridge::trash_lens_item, maintenance_bridge::clean_orphans, maintenance_bridge::analyze_space_lens,
+            maintenance_bridge::trash_lens_item, maintenance_bridge::clean_orphans, maintenance_bridge::analyze_space_lens, maintenance_bridge::get_lens_folder,
             maintenance_bridge::choose_scan_folder, maintenance_bridge::open_full_disk_access_settings,
             maintenance_bridge::reveal_in_file_manager, maintenance_bridge::open_in_terminal,
         ])
@@ -119,4 +120,27 @@ pub fn run() {
             tauri::RunEvent::Reopen{..}=>{let _=menubar::open_main(app,"open");},
             _=>{}
         });
+}
+
+/// Internal read-only worker mode, before creating any windows or Tauri services.
+pub fn run_lens_cli()->bool {
+    let args:Vec<_>=std::env::args().skip(1).collect();
+    if args.first().is_none_or(|a|a!="--lens-scan"){return false}
+    if args.len()!=3 || args[1]!="--path"{eprintln!("Invalid lens worker arguments");std::process::exit(2)}
+    let latest=std::sync::Arc::new(std::sync::Mutex::new(serde_json::Value::Null));
+    let done=std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let reporter_latest=latest.clone();let reporter_done=done.clone();
+    let reporter=std::thread::spawn(move || {
+        while !reporter_done.load(std::sync::atomic::Ordering::Relaxed){
+            let data=reporter_latest.lock().unwrap().clone();
+            if !data.is_null(){eprintln!("{}",serde_json::json!({"event":"lens_progress","payload":data}));}
+            std::thread::sleep(std::time::Duration::from_millis(250));
+        }
+    });
+    let result=lens_scanner::scan(args[2].clone().into(),&std::sync::atomic::AtomicBool::new(false),|value|{*latest.lock().unwrap()=value;});
+    done.store(true,std::sync::atomic::Ordering::Relaxed);let _=reporter.join();
+    match result{Ok(value)=>{let output=std::io::BufWriter::new(std::io::stdout());
+        let mut encoder=flate2::write::GzEncoder::new(output,flate2::Compression::fast());
+        if serde_json::to_writer(&mut encoder,&value).is_err() || encoder.finish().is_err(){std::process::exit(1)}},Err(error)=>{eprintln!("{}",error);std::process::exit(1)}}
+    true
 }

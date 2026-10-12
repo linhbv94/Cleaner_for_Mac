@@ -20,7 +20,8 @@ JS invoke argument keys theo Tauri camelCase; JSON payload bên trong snake_case
 | uninstall_app | payload app_id/selected_paths/allow_admin_fallback; baseline chưa có operationId ở IPC |
 | get_orphans | Không args; heuristic groups/safe flags |
 | clean_orphans | selectedPaths, confirmDirectDelete; host hiện thiếu identity binding |
-| analyze_space_lens | path, operationId; native depth 1/direct children, lens_id/is_partial/can_trash |
+| analyze_space_lens | path, operationId; Rust worker toàn cây; UI nhận root/direct children, lens_id/scan_root_path/is_partial/can_trash |
+| get_lens_folder | lensId, path → folder DTO từ snapshot Rust hoặc null nếu hết TTL/ngoài root; không đọc filesystem/không tạo grant |
 | trash_lens_item | lensId, path; grant riêng, Trash |
 | choose_scan_folder | Không args; path hoặc null |
 | reveal_in_file_manager, open_in_terminal | path |
@@ -74,3 +75,13 @@ Metrics service host-owned, shared main/panel. Panel chỉ metrics + request ope
 - Archive `evidence.json.gz` chứa row đầy đủ và nội dung nguyên bản từng file host/result/lifecycle/events/cancel. Summary chỉ commit sau archive; nguyên bản chỉ được bỏ khi digest đúng. File hỏng/lạ khiến journal fail closed.
 
 - Host bỏ qua toàn bộ targets trước khi khởi chạy native trả `native_execution: not_started`; journal terminal của ca này không được coi là một thao tác dọn bị ngắt. Không suy ra ca này từ success_count0 đơn thuần.
+
+- Scope uninstall dùng content_snapshots gồm root metadata của mỗi target đã chọn; không dùng giới hạn full subtree của cache để chặn app/data root lớn. Native chuyển nguyên root và kiểm tra lại association/bundle ID/version/app đã thoát. Scope khác giữ manifest riêng. Lens cache là dữ liệu hiển thị5 phút/16 keys, mutation revision làm mất hiệu lực cache, không thay quyền native.
+
+### Space Lens Rust navigation snapshot
+
+Scanner Rust dùng chung Mac/Windows. Response thêm `children_complete`, `is_partial` từng node; `size_kind` (`allocated` Unix, `logical` Windows), `retained_nodes`. Children metadata giữ trong cùng snapshot, không tự tạo quyền xóa sâu. FE dùng `scan_root_path` nội bộ để phân biệt root proof và folder hiển thị.
+
+Không cắt cây theo số node hoặc độ sâu. Host giữ metadata phẳng đầy đủ đọc được5 phút từ hoàn tất; query không gia hạn TTL. Root system không quét; Windows reparse points không duyệt. Quét lỗi/timeout không cấp snapshot thành công. Worker → host dùng gzip/deserialize typed; UI chỉ nhận folder đang xem, không nhận toàn cây. Giới hạn32MiB compressed output và timeout120s được giữ làm lỗi có báo, không cắt cây rồi âm thầm quét lại.
+
+- `get_lens_folder` trả `scan_root_path` gốc và `lens_id` gốc; metadata query không trở thành deletion grant. Host giữ tối đa2 cây, tự giải phóng khi hết5 phút; mutation xóa navigation snapshots. FE giữ tối đa16 folder DTO làm cache hiển thị.

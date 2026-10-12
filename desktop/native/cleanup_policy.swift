@@ -272,7 +272,7 @@ struct CleanupPolicy {
     return value
   }
   /// Full bounded manifest: any new child/same-inode modification invalidates the grant.
-  static func snapshot(_ path: String, allowLinks: Bool = false, mcleanSystem: Bool = false) throws -> [[String: Any]] {
+  static func snapshot(_ path: String, allowLinks: Bool = false, mcleanSystem: Bool = false, rootOnly:Bool = false) throws -> [[String: Any]] {
     guard MaintenanceCLI.unchanged(path) else { throw MaintenanceCLI.failure("path_changed") }
     var pending = [path]; var rows = [[String: Any]](); let deadline = Date().addingTimeInterval(4)
     while let p = pending.popLast() {
@@ -286,7 +286,7 @@ struct CleanupPolicy {
       rows.append(["path":p, "device":UInt64(st.st_dev), "inode":UInt64(st.st_ino), "mode":UInt32(st.st_mode), "size":Int64(st.st_size), "modified_s":Int64(st.st_mtimespec.tv_sec), "modified_ns":Int64(st.st_mtimespec.tv_nsec), "changed_s":Int64(st.st_ctimespec.tv_sec), "changed_ns":Int64(st.st_ctimespec.tv_nsec)])
       // MClean deletes the selected item as a unit. Its System Junk authority
       // must not depend on a bounded full-subtree cache proof or child names.
-      if directory && !mcleanSystem { pending += try MaintenanceCLI.children(p).map(\.path) }
+      if directory && !mcleanSystem && !rootOnly { pending += try MaintenanceCLI.children(p).map(\.path) }
     }
     return rows.sorted { ($0["path"] as? String ?? "") < ($1["path"] as? String ?? "") }
   }

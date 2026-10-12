@@ -38,6 +38,7 @@ jobs:
         run: node --test scripts/test_release_automation.mjs
       - name: Recovery notification and independent history
         run: node scripts/test_operation_history.mjs
+      - run: node scripts/test_folder_scan_cache.mjs
       - run: node scripts/test_scan_retention.cjs
       - run: node scripts/test_uninstall_selection.cjs
       - run: node scripts/test_circle_packing.cjs

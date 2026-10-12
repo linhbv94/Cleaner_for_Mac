@@ -98,6 +98,7 @@ jobs:
         run: |
           node scripts/test_scan_retention.cjs
           node scripts/test_operation_history.mjs
+          node scripts/test_folder_scan_cache.mjs
           node scripts/test_uninstall_selection.cjs
           node scripts/test_circle_packing.cjs
       - name: Test release automation

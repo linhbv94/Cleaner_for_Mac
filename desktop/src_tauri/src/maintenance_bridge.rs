@@ -6,6 +6,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 #[derive(Default)]
 pub struct EngineState {
     grants: Mutex<HashMap<String, (Instant, Value)>>,
+    lens_trees: Arc<Mutex<HashMap<String, (Instant, Arc<crate::lens_scanner::TreeSnapshot>)>>>,
     identities: Mutex<HashMap<String, HashMap<String, (u64, u64)>>>,
     cancellations: Mutex<HashMap<String, Arc<AtomicBool>>>,
     mutation: tokio::sync::Mutex<()>,
@@ -28,7 +29,7 @@ impl EngineState {
     fn key(&self, key: &str) -> String { self.latest.lock().unwrap().get(key).cloned().unwrap_or_else(||key.into()) }
 }
 struct MutationLease<'a>(&'a EngineState);
-impl<'a> MutationLease<'a> { fn new(state: &'a EngineState) -> Result<Self,String> { if state.shutting_down.load(Ordering::SeqCst) { return Err("cancelled: app đang thoát".into()); } state.mutation_active.store(true,Ordering::SeqCst); Ok(Self(state)) } }
+impl<'a> MutationLease<'a> { fn new(state: &'a EngineState) -> Result<Self,String> { if state.shutting_down.load(Ordering::SeqCst) { return Err("cancelled: app đang thoát".into()); } state.mutation_active.store(true,Ordering::SeqCst); state.lens_trees.lock().unwrap().clear(); Ok(Self(state)) } }
 impl Drop for MutationLease<'_> { fn drop(&mut self) { self.0.mutation_active.store(false,Ordering::SeqCst); } }
 #[tauri::command]
 pub fn get_operation_status(state: State<'_, EngineState>) -> Value {
@@ -82,7 +83,9 @@ fn validate_scan(value: &Value) -> Result<(),String> {
 #[cfg(unix)]
 fn manifest(path: &str) -> Result<Value,String> { manifest_policy(path, false) }
 #[cfg(unix)]
-fn manifest_policy(path: &str, mclean_system: bool) -> Result<Value,String> {
+fn manifest_policy(path: &str, mclean_system: bool) -> Result<Value,String> { manifest_authority(path,mclean_system,false) }
+#[cfg(unix)]
+fn manifest_authority(path: &str, mclean_system: bool, root_unit:bool) -> Result<Value,String> {
     use std::os::unix::fs::MetadataExt;
     let mut pending=vec![std::path::PathBuf::from(path)]; let mut rows=Vec::new(); let started=Instant::now();
     while let Some(p)=pending.pop() {
@@ -97,7 +100,7 @@ fn manifest_policy(path: &str, mclean_system: bool) -> Result<Value,String> {
         if std::fs::canonicalize(&boundary).map_err(|e|e.to_string())? != native_boundary { return Err("path_changed".into()); }
         if !mclean_system && ((!m.is_file() && !m.is_dir() && !m.is_symlink()) || (m.is_file() && m.nlink()!=1)) { return Err("protected_target: link/special file".into()); }
         rows.push(json!({"path":p.to_string_lossy(),"device":m.dev(),"inode":m.ino(),"mode":m.mode(),"size":m.size(),"modified_s":m.mtime(),"modified_ns":m.mtime_nsec(),"changed_s":m.ctime(),"changed_ns":m.ctime_nsec()}));
-        if m.is_dir() && !mclean_system { for entry in std::fs::read_dir(&p).map_err(|e|e.to_string())? { pending.push(entry.map_err(|e|e.to_string())?.path()); } }
+        if m.is_dir() && !mclean_system && !root_unit { for entry in std::fs::read_dir(&p).map_err(|e|e.to_string())? { pending.push(entry.map_err(|e|e.to_string())?.path()); } }
     }
     rows.sort_by(|a,b|a["path"].as_str().cmp(&b["path"].as_str())); Ok(json!(rows))
 }
@@ -105,17 +108,22 @@ fn manifest_policy(path: &str, mclean_system: bool) -> Result<Value,String> {
 fn manifest(_: &str) -> Result<Value,String> { Err("unsupported platform".into()) }
 #[cfg(not(unix))]
 fn manifest_policy(path: &str, _: bool) -> Result<Value,String> { manifest(path) }
-fn collect_manifests(value: &Value, output: &mut HashMap<String,Value>) {
-    match value {
-        Value::Object(map) => {
-            if map.get("is_cleanable").and_then(Value::as_bool) != Some(false) {
-                if let Some(path)=map.get("path").and_then(Value::as_str) { if let Ok(m)=manifest_policy(path, map.get("rule_id").and_then(Value::as_str) == Some("mclean_system_junk") || map.get("deletion_method").and_then(Value::as_str) == Some("pnpm_prune")) { output.insert(path.into(),m); } }
-            }
-            for child in map.values() { collect_manifests(child,output); }
-        },
-        Value::Array(items)=>for item in items { collect_manifests(item,output); }, _=>{}
+fn collect_manifests(value:&Value,output:&mut HashMap<String,Value>){collect_manifests_scope(value,output,value["operation_scope"]=="uninstall");}
+fn collect_manifests_scope(value:&Value,output:&mut HashMap<String,Value>,uninstall:bool){
+ match value {
+  Value::Object(map)=>{
+   if map.get("is_cleanable").and_then(Value::as_bool)!=Some(false) && map.get("can_trash").and_then(Value::as_bool)!=Some(false){
+    if let Some(path)=map.get("path").and_then(Value::as_str){
+     let system=map.get("rule_id").and_then(Value::as_str)==Some("mclean_system_junk") || map.get("deletion_method").and_then(Value::as_str)==Some("pnpm_prune");
+     if let Ok(proof)=manifest_authority(path,system,uninstall){output.insert(path.into(),proof);}
     }
+   }
+   for child in map.values(){collect_manifests_scope(child,output,uninstall);}
+  },Value::Array(rows)=>for row in rows{collect_manifests_scope(row,output,uninstall);},_=>{}
+ }
 }
+#[cfg(not(unix))]
+fn manifest_authority(path:&str,system:bool,_:bool)->Result<Value,String>{manifest_policy(path,system)}
 fn operation_uuid() -> String {
     let mut b=[0u8;16]; std::fs::File::open("/dev/urandom").and_then(|mut f|f.read_exact(&mut b)).expect("OS random unavailable");
     b[6]=(b[6]&15)|64; b[8]=(b[8]&63)|128;
@@ -142,11 +150,20 @@ fn record_result(state: &EngineState,id: &str,result: &Result<Value,String>) {
         let tmp=dir.join("host_next.json"); if std::fs::write(&tmp,value.to_string()).is_ok() { let _=std::fs::rename(tmp,dir.join("host.json")); }
     }
 }
-fn remember(state: &EngineState, key: String, value: Value) {
+fn remember(state: &EngineState, key: String, mut value: Value) {
+    if key=="apps" {value["operation_scope"]=json!("uninstall");}
     let key = if ["apps","orphans"].contains(&key.as_str()) {
         let ticket=operation_uuid(); state.latest.lock().unwrap().insert(key,ticket.clone()); ticket
     } else {key};
-    let mut snapshots=HashMap::new(); collect_manifests(&value,&mut snapshots);
+    let mut snapshots=HashMap::new();
+    let proof_value = if value["lens_id"].is_string() {
+        let mut shallow=value.clone();
+        if let Some(children)=shallow["root_node"]["children"].as_array_mut() {
+            for child in children { child.as_object_mut().unwrap().remove("children"); }
+        }
+        shallow
+    } else {value.clone()};
+    collect_manifests(&proof_value,&mut snapshots);
     let mut grants = state.grants.lock().unwrap();
     grants.retain(|_, (time, _)| time.elapsed() < Duration::from_secs(900));
     if grants.len() >= 32 { grants.clear(); }
@@ -196,11 +213,11 @@ fn bind_identities(state: &EngineState, key: &str, payload: &mut Value, paths: &
     let known=manifests.get(&key).ok_or("scope_changed: missing manifest")?;
     let mut snapshots=serde_json::Map::new();
     for path in paths {
-        let before=known.get(path).ok_or("protected_target: partial/unsupported target")?;
+        let before=known.get(path).ok_or_else(||format!("Không xác minh được mục {}. Chưa gỡ/dọn mục nào; hãy quét lại và kiểm tra quyền truy cập.",path))?;
         let mclean_system = scan["operation_scope"] == "quick_cleanup" && scan["categories"].as_array().is_some_and(|cats| cats.iter().any(|cat| cat["category"] == "system_junk" && cat["items"].as_array().is_some_and(|items| items.iter().any(|item| item["path"] == path.as_str() && item["rule_id"] == "mclean_system_junk"))));
         let manager_prune = scan["categories"].as_array().is_some_and(|cats| cats.iter().any(|cat| cat["items"].as_array().is_some_and(|items| items.iter().any(|item| item["path"] == path.as_str() && item["deletion_method"] == "pnpm_prune"))));
         let live_cache = scan["operation_scope"] == "quick_cleanup" && scan["categories"].as_array().is_some_and(|cats| cats.iter().any(|cat| cat["category"] == "user_caches" && cat["items"].as_array().is_some_and(|items| items.iter().any(|item| item["path"] == path.as_str() && item["execution_mode"] == "live_cache_root" && item["is_cleanable"] == true))));
-        if !live_cache && manifest_policy(path, mclean_system || manager_prune)? != *before { return Err("scope_changed: nội dung thay đổi, hãy quét lại".into()); }
+        if !live_cache && manifest_authority(path, mclean_system || manager_prune, scan["operation_scope"]=="uninstall")? != *before { return Err("scope_changed: nội dung thay đổi, hãy quét lại".into()); }
         snapshots.insert(path.clone(),before.clone());
     }
     payload["identities"] = Value::Object(stamps); payload["content_snapshots"]=Value::Object(snapshots); Ok(())
@@ -281,8 +298,12 @@ pub async fn acknowledge_operation(window:tauri::WebviewWindow,app:AppHandle,sta
     crate::journal_history::acknowledge(&app.path().app_data_dir().map_err(|e|e.to_string())?.join("operations"),&operation_id)
 }
 
-async fn execute(app: AppHandle, args: Vec<String>, payload: Option<Value>, operation_id: String, cancel: Arc<AtomicBool>) -> Result<Value, String> {
-    let engine = resolve_engine_path(&app)?;
+async fn execute(app:AppHandle,args:Vec<String>,payload:Option<Value>,operation_id:String,cancel:Arc<AtomicBool>)->Result<Value,String>{
+    execute_as(app,args,payload,operation_id,cancel).await
+}
+async fn execute_as<T:serde::de::DeserializeOwned+Send+'static>(app: AppHandle, args: Vec<String>, payload: Option<Value>, operation_id: String, cancel: Arc<AtomicBool>) -> Result<T, String> {
+    let rust_lens=args.first().is_some_and(|arg|arg=="--lens-scan");
+    let engine = if rust_lens {std::env::current_exe().map_err(|e|e.to_string())?}else{resolve_engine_path(&app)?};
     let shutting_down=app.state::<EngineState>().shutting_down.clone();
     let active=app.state::<EngineState>().active_children.clone();
     let mutating=payload.is_some();
@@ -326,9 +347,11 @@ async fn execute(app: AppHandle, args: Vec<String>, payload: Option<Value>, oper
         let data = reader.join().map_err(|_| "Lỗi luồng stdout")?;
         let errors = events.join().map_err(|_| "Lỗi luồng stderr")?;
         if let Some(error) = failure { return Err(error); }
-        if !status?.success() { return Err(format!("Swift engine: {errors}")); }
+        if !status?.success() { return Err(format!("Engine: {errors}")); }
         write_result.map_err(|e| e.to_string())?;
-        serde_json::from_slice(&data?).map_err(|e| format!("JSON engine không hợp lệ: {e}"))
+        let data=data?;
+        if rust_lens {serde_json::from_reader(flate2::read::GzDecoder::new(data.as_slice())).map_err(|e|format!("Lens snapshot không hợp lệ: {e}"))}
+        else {serde_json::from_slice(&data).map_err(|e| format!("JSON engine không hợp lệ: {e}"))}
     }).await.map_err(|e| e.to_string())?
 }
 #[tauri::command]
@@ -481,26 +504,42 @@ pub async fn analyze_space_lens(window: tauri::WebviewWindow, app: AppHandle, st
     main_only(&window)?;
     let cancel = Arc::new(AtomicBool::new(false));
     state.cancellations.lock().unwrap().insert(operation.clone(), cancel.clone());
-    // Depth 1 bounds the DTO for a full home scan; double-click performs a new subtree scan.
-    let result = execute(app, vec!["lens".into(), "--path".into(), path, "--depth".into(), "1".into()], None, operation.clone(), cancel).await;
+    // Full compact snapshot remains in Rust; UI receives only the visible folder.
+    let result:Result<crate::lens_scanner::TreeSnapshot,String>=execute_as(app,vec!["--lens-scan".into(),"--path".into(),path],None,operation.clone(),cancel).await;
     state.cancellations.lock().unwrap().remove(&operation);
-    let mut value = result?;
-    let ticket = unique_ticket("lens");
-    value["lens_id"] = json!(ticket);
-    remember(&state, ticket, value.clone()); Ok(value)
+    let mut tree=result?;tree.index()?;
+    let ticket=unique_ticket("lens");
+    let value=tree.response(&tree.root_path.to_string_lossy(),&ticket).ok_or("Invalid lens root")?;
+    remember(&state,ticket.clone(),value.clone());
+    let trees=state.lens_trees.clone();
+    {let mut cache=trees.lock().unwrap();cache.retain(|_,(time,_)|time.elapsed()<Duration::from_secs(300));
+     if cache.len()>=2{if let Some(oldest)=cache.iter().min_by_key(|(_, (time,_))|*time).map(|(key,_)|key.clone()){cache.remove(&oldest);}}
+     cache.insert(ticket.clone(),(Instant::now(),Arc::new(tree)));}
+    tokio::spawn(async move {tokio::time::sleep(Duration::from_secs(300)).await;let mut cache=trees.lock().unwrap();
+        if cache.get(&ticket).is_some_and(|(time,_)|time.elapsed()>=Duration::from_secs(300)){cache.remove(&ticket);}});
+    Ok(value)
+}
+#[tauri::command]
+pub async fn get_lens_folder(window:tauri::WebviewWindow,state:State<'_,EngineState>,lens_id:String,path:String)->Result<Option<Value>,String>{
+    main_only(&window)?;
+    Ok(cached_lens_folder(&state,&lens_id,&path))
+}
+fn cached_lens_folder(state:&EngineState,lens_id:&str,path:&str)->Option<Value>{
+    let tree={let mut cache=state.lens_trees.lock().unwrap();cache.retain(|_,(time,_)|time.elapsed()<Duration::from_secs(300));cache.get(lens_id).map(|(_,tree)|tree.clone())};
+    tree.and_then(|tree|tree.response(path,lens_id))
 }
 #[tauri::command]
 pub async fn choose_scan_folder(app: AppHandle) -> Result<Option<String>, String> {
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos",target_os = "windows"))]
     {
     let window = app.get_webview_window("main").ok_or("Không tìm thấy cửa sổ VXClean")?;
     let mut dialog = rfd::AsyncFileDialog::new()
         .set_title("Chọn thư mục để phân tích dung lượng")
         .set_parent(&window);
-    if let Some(home) = std::env::var_os("HOME") { dialog = dialog.set_directory(home); }
+    if let Some(home) = std::env::var_os(if cfg!(windows){"USERPROFILE"}else{"HOME"}) { dialog = dialog.set_directory(home); }
     Ok(dialog.pick_folder().await.map(|folder| folder.path().to_string_lossy().into_owned()))
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos",target_os = "windows")))]
     { let _ = app; Err("Folder picker của maintenance hiện chỉ hỗ trợ macOS".into()) }
 }
 #[tauri::command]
@@ -637,6 +676,40 @@ mod tests {
         child.stdin.take().unwrap().write_all(payload.to_string().as_bytes()).unwrap();let out=child.wait_with_output().unwrap();assert!(out.status.success(),"{}",String::from_utf8_lossy(&out.stderr));
         let result:Value=serde_json::from_slice(&out.stdout).unwrap();assert_eq!(result["success_count"],2);assert!(!path.join("payload").exists());assert!(!system_path.exists());assert_eq!(std::fs::read(alias).unwrap(),vec![7u8;4096]);
     }
+    #[cfg(unix)]
+    #[test] fn uninstall_unit_root_preserves_external_links_and_rejects_replacement() {
+      use std::os::unix::fs::symlink;
+      let base=std::env::temp_dir().join(format!("vxclean_uninstall_{}",operation_uuid()));std::fs::create_dir_all(&base).unwrap();let base=base.canonicalize().unwrap();
+      let app=base.join("Fixture.app");std::fs::create_dir(&app).unwrap();let outside=base.join("external");std::fs::write(&outside,b"keep").unwrap();symlink(&outside,app.join("framework")).unwrap();
+      assert_eq!(manifest_policy(app.to_str().unwrap(),false).unwrap().as_array().unwrap().len(),2);
+      let state=EngineState::default();remember(&state,"apps".into(),json!({"apps":[{"associated_files":[{"path":app,"deletion_method":"trash","file_type":"bundle"}]}]}));
+      let mut proof=json!({});bind_identities(&state,"apps",&mut proof,&[app.to_string_lossy().into()]).unwrap();assert_eq!(proof["content_snapshots"][app.to_str().unwrap()].as_array().unwrap().len(),1);
+      assert_eq!(std::fs::read(&outside).unwrap(),b"keep");
+      std::fs::rename(&app,base.join("old.app")).unwrap();std::fs::create_dir(&app).unwrap();assert!(bind_identities(&state,"apps",&mut json!({}),&[app.to_string_lossy().into()]).is_err());std::fs::remove_dir_all(base).unwrap();
+    }
+    #[cfg(target_os="macos")]
+    #[test] fn installed_app_uninstall_preflight_probe() {
+      let Ok(binary)=std::env::var("VXCLEAN_APP_PROBE_BINARY") else{return};let target=std::env::var("VXCLEAN_APP_PROBE_PATH").unwrap();
+      let out=Command::new(binary).args(["apps","--include-residuals"]).output().unwrap();assert!(out.status.success());let scan:Value=serde_json::from_slice(&out.stdout).unwrap();
+      let app=scan["apps"].as_array().unwrap().iter().find(|a|a["bundle_path"]==target).unwrap();let paths:Vec<String>=app["associated_files"].as_array().unwrap().iter().map(|f|f["path"].as_str().unwrap().into()).collect();
+      let state=EngineState::default();remember(&state,"apps".into(),scan.clone());let mut payload=json!({});bind_identities(&state,"apps",&mut payload,&paths).unwrap();println!("Read-only uninstall preflight passed for {} roots",paths.len());
+    }
+    #[cfg(target_os="macos")]
+    #[test] fn uninstall_payload_native_roundtrip() {
+      use std::os::unix::fs::symlink;
+      let Ok(binary)=std::env::var("VXCLEAN_FIXTURE_BINARY") else{return};let home=std::env::var("VXCLEAN_TEST_HOME").unwrap();
+      let app=std::path::PathBuf::from(&home).join(format!("Applications/vxclean_host_uninstall_{}.app",operation_uuid()));std::fs::create_dir_all(app.join("Contents")).unwrap();
+      std::fs::write(app.join("Contents/Info.plist"),b"<?xml version=\"1.0\"?><plist version=\"1.0\"><dict><key>CFBundleIdentifier</key><string>org.fixture.host.uninstall</string><key>CFBundleShortVersionString</key><string>1</string><key>CFBundlePackageType</key><string>APPL</string></dict></plist>").unwrap();
+      let marker=std::path::PathBuf::from(&home).join(format!("external_{}",operation_uuid()));std::fs::write(&marker,b"preserve").unwrap();symlink(&marker,app.join("Contents/external")).unwrap();
+      let out=Command::new(&binary).args(["apps","--include-residuals"]).output().unwrap();assert!(out.status.success());let scan:Value=serde_json::from_slice(&out.stdout).unwrap();let selected=scan["apps"].as_array().unwrap().iter().find(|a|a["bundle_path"]==app.to_str().unwrap()).unwrap().clone();
+      let state=EngineState::default();remember(&state,"apps".into(),scan);let paths=vec![app.to_string_lossy().into_owned()];let mut payload=json!({"app_id":selected["id"],"authorized_app":selected,"selected_paths":paths,"operation_scope":"uninstall","allow_admin_fallback":false,"operation_id":operation_uuid()});request_version(&mut payload);bind_identities(&state,"apps",&mut payload,&paths).unwrap();
+      let mut child=Command::new(binary).args(["uninstall","--stdin"]).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();serde_json::to_writer(child.stdin.take().unwrap(),&payload).unwrap();let out=child.wait_with_output().unwrap();assert!(out.status.success(),"{}",String::from_utf8_lossy(&out.stderr));let result:Value=serde_json::from_slice(&out.stdout).unwrap();
+      assert_eq!(std::fs::read(&marker).unwrap(),b"preserve");
+      if result["success_count"]==1 {
+        assert!(!app.exists());let recycled=std::path::PathBuf::from(result["details"][0]["test_trash_path"].as_str().unwrap());assert_eq!(recycled.file_name(),app.file_name());assert!(!std::fs::symlink_metadata(&recycled).unwrap().file_type().is_symlink());std::fs::remove_dir_all(recycled).unwrap();
+      } else {assert_eq!(result["details"][0]["status"],"permission_denied");std::fs::remove_dir_all(app).unwrap();}
+      assert_eq!(std::fs::read(&marker).unwrap(),b"preserve");std::fs::remove_file(marker).unwrap();
+    }
     #[test] fn orphan_payload_native_roundtrip() {
         let Ok(binary)=std::env::var("VXCLEAN_FIXTURE_BINARY") else {return};
         let home=std::env::var("VXCLEAN_TEST_HOME").unwrap();
@@ -742,5 +815,27 @@ mod cleanup_request_tests {
     fn oversize_request_is_rejected_before_execution() {
         let p=json!({"targets":[{"path":"/a"},{"path":"/b"}],"identities":{"/a":[1,2],"/b":[3,4]},"content_snapshots":{"/a":[],"/b":"x".repeat(CLEANUP_REQUEST_LIMIT)}});
         assert!(validate_cleanup_request(&p).is_err());
+    }
+}
+
+#[cfg(test)]mod lens_navigation_tests {
+    use super::*;
+    #[test]fn query_reads_snapshot_without_filesystem_or_mutation_grants(){
+        let root=std::env::temp_dir().join(operation_uuid());std::fs::create_dir_all(root.join("child/deep")).unwrap();std::fs::write(root.join("child/deep/file"),b"original").unwrap();
+        let mut tree=crate::lens_scanner::scan(root.clone(),&AtomicBool::new(false),|_|{}).unwrap();tree.index().unwrap();let path=tree.root_path.join("child/deep").to_string_lossy().into_owned();
+        let state=EngineState::default();state.lens_trees.lock().unwrap().insert("ticket".into(),(Instant::now(),Arc::new(tree)));
+        // Removing the fixture proves navigation performs no re-read, not merely a fast scan.
+        std::fs::remove_dir_all(root).unwrap();
+        assert_eq!(cached_lens_folder(&state,"ticket",&path).unwrap()["root_node"]["children"][0]["name"],"file");
+        assert!(cached_lens_folder(&state,"ticket","/outside").is_none());assert!(cached_lens_folder(&state,"missing",&path).is_none());
+        assert!(state.grants.lock().unwrap().is_empty());assert!(state.manifests.lock().unwrap().is_empty());assert!(state.identities.lock().unwrap().is_empty());
+        state.lens_trees.lock().unwrap().get_mut("ticket").unwrap().0=Instant::now()-Duration::from_secs(301);
+        assert!(cached_lens_folder(&state,"ticket",&path).is_none());assert!(state.lens_trees.lock().unwrap().is_empty());
+    }
+    #[test]fn mutation_invalidates_navigation_snapshot(){
+        let root=std::env::temp_dir().join(operation_uuid());std::fs::create_dir_all(&root).unwrap();let mut tree=crate::lens_scanner::scan(root.clone(),&AtomicBool::new(false),|_|{}).unwrap();tree.index().unwrap();
+        let state=EngineState::default();state.lens_trees.lock().unwrap().insert("ticket".into(),(Instant::now(),Arc::new(tree)));
+        {let _lease=MutationLease::new(&state).unwrap();assert!(state.lens_trees.lock().unwrap().is_empty());}
+        std::fs::remove_dir_all(root).unwrap();
     }
 }
