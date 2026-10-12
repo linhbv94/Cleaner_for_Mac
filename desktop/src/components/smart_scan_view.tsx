@@ -3,6 +3,7 @@ import { useConfirmation } from './confirmation_dialog';
 import { scanRetention } from '../services/scan_retention';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
+  X,
   Sparkles,
   CheckCircle2,
   AlertTriangle,
@@ -42,6 +43,20 @@ const PRIORITY_ORDER: JunkCategoryType[] = [
   'brew_cache',
 ];
 
+function QuickNotice({ title, details, onDismiss }: { title: string; details: string[]; onDismiss: () => void }) {
+  const unique = [...new Set(details.filter(Boolean))];
+  return <div role="status" className="w-full mb-3 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-left text-xs">
+    <div className="flex items-start gap-2">
+      <AlertTriangle className="w-4 h-4 shrink-0 text-amber-500" />
+      <div className="flex-1 min-w-0"><p className="font-semibold">{title}</p><p className="mt-1 text-slate-500 dark:text-slate-400">Quét lại để cập nhật dữ liệu. Xem chi tiết nếu vấn đề vẫn tiếp diễn.</p></div>
+      <button type="button" aria-label="Đóng thông báo" onClick={onDismiss} className="p-1 rounded hover:bg-slate-500/10 cursor-pointer"><X className="w-4 h-4" /></button>
+    </div>
+    {unique.length > 0 && <details className="mt-2 ml-6"><summary className="cursor-pointer text-slate-500 dark:text-slate-400">Xem chi tiết ({unique.length})</summary>
+      <ul className="mt-2 max-h-32 overflow-y-auto space-y-2 text-slate-500 dark:text-slate-400">{unique.map(detail => <li key={detail} className="break-words [overflow-wrap:anywhere]">{detail}</li>)}</ul>
+    </details>}
+  </div>;
+}
+
 export const SmartScanView: React.FC<SmartScanViewProps> = ({
   onBackToDashboard,
   autoStart,
@@ -49,6 +64,8 @@ export const SmartScanView: React.FC<SmartScanViewProps> = ({
 }) => {
   const appQuit = useAppQuitDialog();
   const confirmation = useConfirmation();
+  const [scanNoticeDismissed, setScanNoticeDismissed] = useState(false);
+  const [cleanupNoticeDismissed, setCleanupNoticeDismissed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [state, setState] = useState<ScanViewState>('idle');
   const [progress, setProgress] = useState<ScanProgressEvent | null>(null);
@@ -65,6 +82,8 @@ export const SmartScanView: React.FC<SmartScanViewProps> = ({
   const handleStartScan = async () => {
     const runId = ++generation.current;
     setError(null);
+    setScanNoticeDismissed(false);
+    setCleanupNoticeDismissed(false);
     setScanResult(null);
     setState('scanning');
     setProgress(null);
@@ -271,10 +290,12 @@ export const SmartScanView: React.FC<SmartScanViewProps> = ({
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50 dark:bg-[#0f1117] text-slate-800 dark:text-slate-100 p-6 relative">
       {appQuit.dialog}{confirmation.dialog}
-      {error && <div role="alert" className="text-xs text-rose-400 p-3">{error}</div>}
-      {!!scanResult?.unsupported_cache_paths?.length && <div role="status" className="text-xs text-amber-500 p-3">Đã bỏ qua cache tùy chỉnh ngoài phạm vi an toàn: {scanResult.unsupported_cache_paths.join(', ')}.</div>}
-      {scanResult?.timed_out_categories?.length ? <div role="status" className="text-xs text-amber-500 p-3">Quét chưa đầy đủ: {scanResult.timed_out_categories.join(', ')} vượt thời gian chờ. Không coi nhóm này là trống; các nhóm khác vẫn có kết quả.</div> : null}
-      {scanResult && scanResult.fda_limited_categories.length > 0 && <div role="status" className="text-xs text-amber-500 p-3">Quét chưa đầy đủ ở: {scanResult.fda_limited_categories.join(', ')}. Một số vùng không đọc được hoặc vượt giới hạn duyệt. Xem lý do trên từng mục; Full Disk Access không thay quyền ghi/admin.</div>}
+      {error && <QuickNotice key="error" title="Không thể hoàn tất thao tác" details={[error]} onDismiss={() => setError(null)} />}
+      {!scanNoticeDismissed && scanResult && (scanResult.unsupported_cache_paths?.length || scanResult.timed_out_categories?.length || scanResult.fda_limited_categories.length) ? <QuickNotice key="scan" title="Một số vùng chưa được quét đầy đủ" details={[
+        ...(scanResult.unsupported_cache_paths ?? []).map(path => `Cache tùy chỉnh ngoài phạm vi hỗ trợ: ${path}`),
+        ...(scanResult.timed_out_categories ?? []).map(category => `Vượt thời gian chờ: ${category}`),
+        ...scanResult.fda_limited_categories.map(category => `Không đọc được hết hoặc vượt giới hạn duyệt: ${category}. Full Disk Access không thay quyền ghi/admin.`),
+      ]} onDismiss={() => setScanNoticeDismissed(true)} /> : null}
       {/* 1. IDLE STATE */}
       {state === 'idle' && (
         <div className="flex-1 flex flex-col items-center justify-center text-center max-w-xl mx-auto">
@@ -317,7 +338,7 @@ export const SmartScanView: React.FC<SmartScanViewProps> = ({
 
       {/* 2. SCANNING STATE */}
       {state === 'scanning' && (
-        <div className="flex-1 flex flex-col items-center justify-center text-center max-w-md mx-auto">
+        <div className="flex-1 flex flex-col items-center justify-center text-center w-full max-w-md mx-auto overflow-y-auto">
           <div className="relative w-36 h-36 mb-6 flex items-center justify-center">
             <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
               <circle
@@ -416,7 +437,17 @@ export const SmartScanView: React.FC<SmartScanViewProps> = ({
               return (
                 <div
                   key={cat.category}
-                  className={`p-3.5 rounded-xl border transition-all ${
+                  role="group"
+                  aria-label={`Chọn hạng mục ${cat.title}`}
+                  tabIndex={cleanableItems.length > 0 ? 0 : undefined}
+                  onClick={() => toggleCategory(cat.category)}
+                  onKeyDown={event => {
+                    if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
+                      event.preventDefault();
+                      toggleCategory(cat.category);
+                    }
+                  }}
+                  className={`p-3.5 rounded-xl border transition-all focus-visible:outline-2 focus-visible:outline-cyan-500 ${cleanableItems.length > 0 ? 'cursor-pointer' : ''} ${
                     isChecked
                       ? 'border-cyan-500/40 bg-cyan-500/5 dark:bg-cyan-500/10'
                       : 'border-slate-200 dark:border-white/5 bg-white/40 dark:bg-[#141821]/40'
@@ -428,6 +459,8 @@ export const SmartScanView: React.FC<SmartScanViewProps> = ({
                       checked={isChecked}
                       ref={input => { if (input) input.indeterminate = !isChecked && cleanableItems.some(item => selectedPaths.has(item.path)); }}
                       disabled={cleanableItems.length === 0}
+                      aria-label={`Chọn toàn bộ ${cat.title}`}
+                      onClick={event => event.stopPropagation()}
                       onChange={() => toggleCategory(cat.category)}
                       className="mt-1 w-4 h-4 rounded text-cyan-500 focus:ring-cyan-500 cursor-pointer"
                     />
@@ -460,10 +493,10 @@ export const SmartScanView: React.FC<SmartScanViewProps> = ({
                             : cat.items.every(item => item.deletion_method === 'trash') ? 'Chuyển vào Thùng rác' : 'Xem từng mục trước khi dọn'}
                         </span>
                       </div>
-                      <details className="mt-2 text-[11px]">
-                        <summary className="cursor-pointer text-cyan-600 dark:text-cyan-400">Xem và chọn từng mục</summary>
+                      <details className="mt-2 text-[11px] cursor-auto" onClick={event => event.stopPropagation()}>
+                        <summary className="w-full cursor-pointer text-cyan-600 dark:text-cyan-400">Xem và chọn từng mục</summary>
                         <div className="mt-2 max-h-48 overflow-auto space-y-2">
-                          {cat.items.map(item => <label key={item.path} className="flex items-start gap-2">
+                          {[...cat.items].sort((a, b) => b.size_bytes - a.size_bytes).map(item => <label key={item.path} className="flex items-start gap-2">
                             <input type="checkbox" checked={selectedPaths.has(item.path)} disabled={item.is_cleanable === false}
                               onChange={() => setSelectedPaths(previous => { const next = new Set(previous); if (next.has(item.path)) next.delete(item.path); else next.add(item.path); return next; })} />
                             <span className="min-w-0 break-all">{item.name} · {formatBytes(item.size_bytes)}<br />
@@ -520,7 +553,7 @@ export const SmartScanView: React.FC<SmartScanViewProps> = ({
 
       {/* 4. CLEANING STATE */}
       {state === 'cleaning' && (
-        <div className="flex-1 flex flex-col items-center justify-center text-center max-w-md mx-auto">
+        <div className="flex-1 flex flex-col items-center justify-center text-center w-full max-w-md mx-auto overflow-y-auto">
           <RotateCw className="w-10 h-10 text-cyan-500 animate-spin mb-4" />
           <h3 className="text-sm font-semibold mb-2">Đang dọn dẹp các tệp đã chọn...</h3>
           <p className="text-xs text-slate-400 truncate w-full mb-6 font-mono px-4">
@@ -541,12 +574,16 @@ export const SmartScanView: React.FC<SmartScanViewProps> = ({
 
       {/* 5. SUMMARY STATE */}
       {state === 'summary' && cleanResult && (
-        <div className="flex-1 flex flex-col items-center justify-center text-center max-w-md mx-auto">
-          <div className="w-16 h-16 rounded-full bg-emerald-500/15 text-emerald-500 flex items-center justify-center mb-4">
-            <CheckCircle2 className="w-10 h-10" />
+        <div className="flex-1 flex flex-col items-center justify-center text-center w-full max-w-md mx-auto overflow-y-auto">
+          <div className={`w-16 h-16 shrink-0 rounded-full flex items-center justify-center mb-4 ${(cleanResult.failure_count || cleanupWasPartial) ? "bg-amber-500/15 text-amber-500" : "bg-emerald-500/15 text-emerald-500"}`}>
+            {(cleanResult.failure_count || cleanupWasPartial) ? <AlertTriangle className="w-10 h-10 text-amber-500" /> : <CheckCircle2 className="w-10 h-10" />}
           </div>
           <h2 className="text-lg font-bold mb-1">{(cleanResult.failure_count || cleanupWasPartial) ? 'Chưa dọn hết lựa chọn ban đầu' : 'Đã dọn các mục đã chọn'}!</h2>
-          {cleanResult.failure_count > 0 && <p role="alert" className="text-xs text-rose-400">{cleanResult.failure_count} mục không được dọn. {cleanResult.details.filter(d => d.status !== "success").map(d => d.error_message).join("; ")}</p>}
+          {cleanResult.failure_count > 0 && !cleanupNoticeDismissed && <QuickNotice key="cleanup" title={`${cleanResult.failure_count} mục chưa được dọn`} details={Object.entries(cleanResult.details.filter(d => d.status !== 'success').reduce<Record<string, string[]>>((groups, detail) => {
+            const reason = detail.error_message || 'Chưa xác định được kết quả';
+            (groups[reason] ??= []).push(detail.path);
+            return groups;
+          }, {})).map(([reason, paths]) => `${paths.length} mục · ${reason} · ${paths.join(' · ')}`)} onDismiss={() => setCleanupNoticeDismissed(true)} />}
           <p className="text-xs text-slate-500 dark:text-slate-400 mb-6">
             Đã giải phóng thành công dung lượng lưu trữ trên máy Mac của bạn.
           </p>

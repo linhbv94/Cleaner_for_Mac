@@ -31,3 +31,15 @@ Theme chung bộ VX; giữ dashboard/scan/uninstall/Lens hiện có và retentio
 macOS ưu tiên, CLT build Swift đủ cho đường Tauri hiện tại; minimum 13 là cấu hình target, không là matrix đã QA đầy đủ. Windows chưa có maintenance adapter; UI reuse không chứng minh engine Win. Không bật capability cho feature chưa native-supported/initialized.
 
 Lượt này chuẩn bị code/spec/build/QA cho release, không tự commit/push/tag/publish, sửa signing key/billing hay dọn user data thật. Không gọi debug build hoặc bỏ badge là release-ready. Gate bắt buộc: policy negative tests, host/native parity, current packaged artifact, native lifecycle/data fixtures và báo giới hạn theo platform.
+
+## Production hotfix 1.0.5 — xác thực và cache đang mở
+
+[Một admin pass và Quick không đóng app](24_single_admin_pass_quick_live_cache.md) thay thế yêu cầu lifecycle cho ordinary Quick User Cache. Detailed giữ lifecycle theo adapter. Một cleanup request 64 MiB tối đa, một native process; gom permission failures xin admin một lần cuối lượt, giữ proof/identity và kết quả từng mục. Không lưu mật khẩu.
+
+### Chrome Quick đang mở — 2026-10-11
+
+Ngoại lệ content manifest chỉ cho `chrome_quick_cache` trong Library/Caches: giữ root identity và quyền mục đã chọn, xác minh manifest hiện tại cùng rule/no-follow trước khi dọn; không bỏ toàn mục vì cache được ghi thêm. Không áp dụng cho Application Support, profile, Detailed hoặc gỡ app. Cache sinh sau lượt dọn có thể xuất hiện lại. Chi tiết ở [spec24](24_single_admin_pass_quick_live_cache.md).
+
+### Live Quick tiếp theo — 2026-10-11
+
+Codex frontend cache trong Library/Caches dùng cùng cơ chế cache đang mở như Chrome. Loại riêng wifi.log đang ghi ở /var/log và alias /private/var/log khỏi scan/cleanup Quick theo chỉ đạo user; log xoay vòng giữ nguyên. System Junk còn lại giữ identity/content guard hiện tại. Các rule khác giữ snapshot strict; xem [spec24](24_single_admin_pass_quick_live_cache.md).

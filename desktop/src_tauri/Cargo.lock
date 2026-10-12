@@ -4403,11 +4403,13 @@ dependencies = [
 
 [[package]]
 name = "vxclean"
-version = "1.0.3"
+version = "1.0.12"
 dependencies = [
+ "flate2",
  "rfd",
  "serde",
  "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
  "tauri-plugin-single-instance",

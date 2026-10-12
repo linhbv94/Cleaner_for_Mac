@@ -5,10 +5,10 @@
 User bác bỏ nghiệm thu321MB khi scan tính cả1GB bị khóa. Gate Quick mở lại; không ready cho đến khi mọi item trong kết quả dọn đều được chọn/dọn bằng engine. Không chỉ đổi nhãn hoặc giấu lỗi coverage để đạt con số đẹp.
 
 - Đối chiếu MClean gốc trong repo: User Cache duyệt ~/Library/Caches, chỉ loại Homebrew/Ollama theo nhóm chuyên biệt. VXClean thêm filter Google/Adobe/AI/ShipIt gây127MB; bỏ filter rộng đó cho discovery. Không thêm Application Support/Movies vào Quick. Node/Brew CLI vẫn không chạy.
-- Cache thực tế ordinary trong Library/Caches (Google/Chrome, Adobe, AI frontend) cần executable cleanup rules và lifecycle tương ứng, không loại cả vendor chỉ vì có nhánh detail. Giữ pending/update staging/state và updater đang dùng, không dọn project/runtime/system critical. Inventory excluded phải có tên/byte/lý do riêng và không gọi là rác có thể dọn.
+- Cache thực tế ordinary trong Library/Caches (Google/Chrome, Adobe, AI frontend) cần executable cleanup rules; ordinary Quick cache không ép đóng app (spec24), không loại cả vendor chỉ vì có nhánh detail. Giữ pending/update staging/state và updater đang dùng, không dọn project/runtime/system critical. Inventory excluded phải có tên/byte/lý do riêng và không gọi là rác có thể dọn.
 - Quick categories chỉ chứa target cleanable; category total và total_cleanable_bytes là tổng chính xác cùng tập target. Large Files vẫn opt-in/Trash; không nhận diện file cá nhân là cache. Giữ excluded_items riêng chỉ đọc để user kiểm tra toàn ledger, không cấp grant; scan partial phải nói rõ.
 - Foundation HTTP cache: fsCachedData và các file Cache.db/WAL/SHM/journal nhận diện exact đều là cache tái tạo; full selection phải kiểm chứng cache miss→store/read lại, giữ Preferences/cookie/auth ngoài scope. Không khóa riêng database chỉ vì là DB trong cache đã biết.
-- Có cache cần đóng app: Quick dùng flow Quit/Cancel/rescan/reopen như detail, nhưng giữ operation_scope=quick_cleanup toàn đường đi; không mượn detail/uninstall grant. Hủy/Skip báo rõ chưa dọn đủ, không ghi completed-all.
+- Ordinary Quick User Cache không ép đóng app; cache thay đổi vẫn failclosed theo proof. Detailed giữ Quit/Cancel/rescan/reopen khi adapter yêu cầu; không mượn detail/uninstall grant cho Quick.
 - Quick không đạt gate chỉ vì metadata is_cleanable=true: test scan tất cả eligible→host/native mutation thật→rescan0 eligible trên fixture, giữ excluded hashes; có Google/Adobe/AI ordinary cache. Thay đổi nội dung/permission/fresh state vẫn failclosed và partial thật, không ép success.
 - Thanh thao tác bị ngắt có nút X bên phải để ẩn các cảnh báo hiện có trong phiên. Journal/reopen obligations/updater safety guards vẫn tồn tại; thao tác bị ngắt mới phải hiện lại. Không tự replay/xóa journal.
 
@@ -60,3 +60,15 @@ Chrome/Adobe/CapCut/Codex trong Library/Caches vẫn được Quick xét quét/d
 - Không cần chạy lại Large Files/Node/Brew để tính coverage Quick User Cache. Tái sử dụng classifier/scanner chung; không tạo hai bộ rule độc lập để tránh drift.
 - QA bắt buộc: Quick parent/Detail child, Quick child/Detail parent, sibling ngoài coverage vẫn giữ, Quick blocked nhưng Detail adapter hợp lệ, đổi dữ liệu/rule sau scan, selection và cleanup grant không vượt scope.
 - **Trạng thái:** đã nối dedup theo eligibility Quick. Target/child Quick bị loại khỏi Detailed; parent bao phủ target Quick bị chặn và chỉ hiển thị phần ngoài Quick. Scanner Large Files thuộc Quick. Fixture và gói mới xem [spec22](22_manager_prune_installer_cleanup.md).
+
+## Cập nhật production 1.0.5
+
+Yêu cầu đóng app cho ordinary Quick Library/Caches được bỏ theo feedback user; không đóng Chrome/ChatGPT/Antigravity để dọn Quick. Cache có thể sinh lại hoặc thay đổi, guard identity/content vẫn giữ. Detailed Application Support/media adapters giữ lifecycle. Quy tắc admin cuối lượt, một request và giới hạn proof xem [spec24](24_single_admin_pass_quick_live_cache.md).
+
+### Chrome Quick đang mở — 2026-10-11
+
+Ngoại lệ content manifest chỉ cho `chrome_quick_cache` trong Library/Caches: giữ root identity và quyền mục đã chọn, xác minh manifest hiện tại cùng rule/no-follow trước khi dọn; không bỏ toàn mục vì cache được ghi thêm. Không áp dụng cho Application Support, profile, Detailed hoặc gỡ app. Cache sinh sau lượt dọn có thể xuất hiện lại. Chi tiết ở [spec24](24_single_admin_pass_quick_live_cache.md).
+
+### Live Quick tiếp theo — 2026-10-11
+
+Codex frontend cache trong Library/Caches dùng cùng cơ chế cache đang mở như Chrome. Loại riêng wifi.log đang ghi ở /var/log và alias /private/var/log khỏi scan/cleanup Quick theo chỉ đạo user; log xoay vòng giữ nguyên. System Junk còn lại giữ identity/content guard hiện tại. Các rule khác giữ snapshot strict; xem [spec24](24_single_admin_pass_quick_live_cache.md).

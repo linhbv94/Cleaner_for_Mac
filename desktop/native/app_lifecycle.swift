@@ -79,12 +79,17 @@ struct AppLifecycle {
       guard apps[i]["closed"] as? Bool == true, apps[i]["reopened"] as? Bool != true else { continue }
       guard let bundleID = apps[i]["bundle_id"] as? String, supported.contains(bundleID),
         let path = apps[i]["path"] as? String, MaintenanceCLI.unchanged(path),
-        let bundle = Bundle(path: path), bundle.bundleIdentifier == bundleID,
-        bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String == apps[i]["version"] as? String else {
+        let bundle = Bundle(path: path), bundle.bundleIdentifier == bundleID else {
         apps[i]["reopen_status"] = "app_identity_changed"; continue
       }
       if NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).contains(where: { $0.bundleURL?.path == path }) {
         apps[i]["reopened"] = true; apps[i]["reopen_status"] = "already_running"; continue
+      }
+      // Passive reconciliation never launches an app. Running identity is enough
+      // even when the user has since installed a newer version of that app.
+      if payload["reconcile_only"] as? Bool == true { continue }
+      guard bundle.object(forInfoDictionaryKey:"CFBundleVersion") as? String == apps[i]["version"] as? String else {
+        apps[i]["reopen_status"] = "app_identity_changed"; continue
       }
       let configuration = NSWorkspace.OpenConfiguration()
       configuration.activates = false

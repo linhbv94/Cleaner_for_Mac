@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import { historyEntries } from '../desktop/src/services/operation_history_policy.ts';
+const old = { operation_id: 'old', recovery_required: true };
+const latest = { operation_id: 'latest', recovery_required: false };
+assert.deepEqual(historyEntries([latest, old], 'banner'), [old]);
+const acknowledged = { ...old, acknowledgement: { acknowledged: true } };
+assert.deepEqual(historyEntries([latest, acknowledged], 'banner'), []);
+assert.deepEqual(historyEntries([latest, acknowledged], 'history'), [latest, acknowledged]);
+assert.deepEqual(historyEntries([], 'banner'), []);
+assert.deepEqual(historyEntries([{ operation_id: 'unverified', recovery_required: true, journal_unverified: true }], 'banner').length, 1);
+console.log('PASS: old incident visibility, persisted acknowledgement, independent complete history, empty history, corrupt journal notification');

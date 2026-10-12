@@ -9,6 +9,9 @@ struct CleanupRule {
   let consequence: String
   let enabled: Bool
   let apps: [String]
+  func executionMode(category:String, scope:String) -> String {
+    scope == "quick_cleanup" && category == "user_caches" && ["chrome_quick_cache", "ai_frontend_quick_cache"].contains(id) ? "live_cache_root" : "strict_snapshot"
+  }
   static let unknown = CleanupRule(id: "unvalidated", safety: "unknown", consequence: "Chưa xác minh cấu trúc dữ liệu; giữ lại để tránh mất project, cấu hình hoặc runtime.", enabled: false, apps: [])
 }
 struct CleanupPolicy {
@@ -41,13 +44,13 @@ struct CleanupPolicy {
     }
     if category == "user_caches", scope == "quick_cleanup", lower == "google" {
       guard parts.count > 1, parts[1] == "Chrome" else { return .unknown }
-      return rebuildable("chrome_quick_cache", "Chrome tải lại cache web/code/GPU trong Library/Caches; giữ profile, cookie, mật khẩu và phiên tab trong Application Support. Đóng Chrome và helper trước dọn, mở lại sau.", apps:["com.google.Chrome"])
+      return rebuildable("chrome_quick_cache", "Chrome tải lại cache web/code/GPU trong Library/Caches; giữ profile, cookie, mật khẩu và phiên tab trong Application Support. Có thể dọn khi Chrome đang mở; cache có thể sinh lại.", apps:["com.google.Chrome"])
     }
     if category == "user_caches", scope == "quick_cleanup", lower.contains("capcut") || lower.contains("lvoverseas") {
-      return rebuildable("capcut_quick_cache", "CapCut tạo lại cache trong Library/Caches; giữ Movies/CapCut/project/media. Đóng app và helper trước dọn.", apps:["com.lemon.lvoverseas"])
+      return rebuildable("capcut_quick_cache", "CapCut tạo lại cache trong Library/Caches; giữ Movies/CapCut/project/media. Cache có thể sinh lại khi app đang mở.", apps:["com.lemon.lvoverseas"])
     }
     if category == "user_caches", scope == "quick_cleanup", lower == "codex" {
-      return rebuildable("ai_frontend_quick_cache", "Codex tạo lại cache frontend trong Library/Caches; giữ lịch sử, đăng nhập, plugin/MCP/runtime. Đóng app/helper trước dọn.", apps:["com.openai.codex"])
+      return rebuildable("ai_frontend_quick_cache", "Codex tạo lại cache frontend trong Library/Caches; giữ lịch sử, đăng nhập, plugin/MCP/runtime. Cache có thể sinh lại khi app đang mở.", apps:["com.openai.codex"])
     }
     let dedicated = ["google", "adobe", "homebrew", "yarn", "pip", "ollama", "com.electron.ollama"]
     if category == "user_caches", scope != "quick_cleanup", dedicated.contains(lower) || ["antigravity", "codex", "chatgpt", "capcut", "lvoverseas", "shipit", "xcode", "docker", "pnpm", "npm", "updater", "com.vxclean", "com.adobe"].contains(where:lower.contains) { return .unknown }
@@ -88,9 +91,21 @@ struct CleanupPolicy {
     if scope == "quick_cleanup", category == "system_junk", temp, rebuildableEnvironment.contains(name) { return false }
     return protectedNames.contains(name)
   }
+  static func excludedQuickTarget(_ path: String, category: String, scope: String) -> Bool {
+    guard scope == "quick_cleanup", category == "system_junk" else { return false }
+    #if ENGINE_TESTING
+    let prefix = MaintenanceCLI.home + "/system"
+    #else
+    let prefix = ""
+    #endif
+    return [prefix + "/var/log/wifi.log", prefix + "/private/var/log/wifi.log"].contains(MaintenanceCLI.url(path).path)
+  }
   static func rule(_ path: String, category: String, scope: String) -> CleanupRule {
     let h = MaintenanceCLI.home
     let p = MaintenanceCLI.url(path).path
+    if excludedQuickTarget(path, category:category, scope:scope) {
+      return CleanupRule(id:"active_wifi_log", safety:"protected", consequence:"Log Wi-Fi đang ghi được loại khỏi scope dọn theo lựa chọn của user; log đã xoay vòng giữ rule riêng.", enabled:false, apps:[])
+    }
     if category == "user_caches", scope == "quick_cleanup", ManagerCleanup.verifiedInstaller(p) {
       return rebuildable("anti_installer_archive", ManagerCleanup.installerAdvice + "Xóa riêng ZIP bộ cài cùng phiên bản đã cài; không xóa app, project hay state updater. Có thể cần tải lại bộ cài.", apps: ["com.google.antigravity"])
     }
@@ -240,14 +255,14 @@ struct CleanupPolicy {
     let r = rule(path, category: category, scope: scope)
     // Adobe source association and shared-helper lifecycle need an adapter gate.
     let sourceUnverified = r.id == "adobe_generated_audio"
-    let busy = isAppBusy(r)
+    let busy = scope == "quick_cleanup" && category == "user_caches" ? false : isAppBusy(r)
     let content = r.enabled ? (try? snapshot(path, mcleanSystem: ["mclean_system_junk", "pnpm_store_prune"].contains(r.id))) : nil
     let proofFits = content.flatMap { try? JSONSerialization.data(withJSONObject:$0) }.map { $0.count <= 3*1024*1024 } ?? false
     let valid = !r.enabled || (proofFits && content != nil && (["mclean_system_junk", "pnpm_store_prune"].contains(r.id) || r.safety != "rebuildable" || content!.allSatisfy { rule($0["path"] as! String, category: category, scope: scope).id == r.id }))
     let needsQuit = busy && !r.apps.isEmpty
     let writable = content?.filter { (($0["mode"] as? UInt32 ?? 0) & UInt32(S_IFMT)) == S_IFREG }.allSatisfy { fm.isWritableFile(atPath:MaintenanceCLI.url($0["path"] as! String).deletingLastPathComponent().path) } ?? false
     let enabled = r.enabled && (!busy || needsQuit) && !sourceUnverified && valid && (writable || r.id == "mclean_system_junk")
-    var value: [String: Any] = ["rule_id": r.id, "safety_level": r.safety, "effective_safety": r.safety,
+    var value: [String: Any] = ["rule_id": r.id, "execution_mode":r.executionMode(category:category,scope:scope), "safety_level": r.safety, "effective_safety": r.safety,
       "consequence_vi": r.consequence, "is_cleanable": enabled, "can_delete": enabled,
       "requires_app_quit": needsQuit, "app_bundle_ids": r.apps, "conditions": needsQuit ? ["quit_app_and_helpers", "rescan_selected_targets"] : [],
       "is_selected_by_default": enabled && r.safety == "rebuildable", "size_kind": "logical_estimate"]
@@ -278,11 +293,11 @@ struct CleanupPolicy {
   static func sameSnapshot(_ a: [[String: Any]], _ b: [[String: Any]]) -> Bool {
     NSDictionary(dictionary: ["rows":a]).isEqual(to: ["rows":b])
   }
-  static func validate(_ path: String, category: String, scope: String, expected: [[String: Any]]) throws -> CleanupRule {
+  static func validate(_ path: String, category: String, scope: String, expected: [[String: Any]], current: [[String:Any]]? = nil) throws -> CleanupRule {
     let r = rule(path, category: category, scope: scope)
-    guard r.enabled, r.id != "adobe_generated_audio", !isAppBusy(r) else { throw MaintenanceCLI.failure("protected_target or app_in_use") }
-    let actual = try snapshot(path, mcleanSystem: ["mclean_system_junk", "pnpm_store_prune"].contains(r.id))
-    guard sameSnapshot(expected, actual) else { throw MaintenanceCLI.failure("scope_changed") }
+    guard r.enabled, r.id != "adobe_generated_audio", (scope == "quick_cleanup" && category == "user_caches" || !isAppBusy(r)) else { throw MaintenanceCLI.failure("protected_target or app_in_use") }
+    let actual = try current ?? snapshot(path, mcleanSystem: ["mclean_system_junk", "pnpm_store_prune"].contains(r.id))
+    guard r.executionMode(category:category,scope:scope) == "live_cache_root" || sameSnapshot(expected, actual) else { throw MaintenanceCLI.failure("scope_changed") }
     if r.safety == "rebuildable", !["mclean_system_junk", "pnpm_store_prune"].contains(r.id) {
       for row in actual {
         let p = row["path"] as! String
@@ -292,7 +307,7 @@ struct CleanupPolicy {
     return r
   }
   /// Never rm a cache parent. Only granted regular files are removed; new children are retained.
-  static func removeCacheFiles(_ manifest: [[String: Any]]) throws -> Int64 {
+  static func removeCacheFiles(_ manifest: [[String: Any]], liveCache: Bool = false) throws -> Int64 {
     var total: Int64 = 0
     for row in manifest where ((row["mode"] as! UInt32) & UInt32(S_IFMT)) == S_IFREG {
       guard !OperationJournal.cancelled() else { throw MaintenanceCLI.failure("cancelled") }
@@ -307,13 +322,19 @@ struct CleanupPolicy {
       }
       defer { close(fd) }
       let name = components.last!
+      #if ENGINE_TESTING
+      if liveCache, ProcessInfo.processInfo.environment["VXCLEAN_TEST_LIVE_CHROME_APPEND"] == path {
+        let writer = try FileHandle(forWritingTo: MaintenanceCLI.url(path))
+        try writer.seekToEnd(); try writer.write(contentsOf:Data("live".utf8)); try writer.close()
+      }
+      #endif
       var st = stat()
       guard fstatat(fd, name, &st, AT_SYMLINK_NOFOLLOW) == 0,
         UInt64(st.st_dev) == row["device"] as? UInt64, UInt64(st.st_ino) == row["inode"] as? UInt64,
         (st.st_mode & S_IFMT) == S_IFREG, st.st_nlink == 1,
-        Int64(st.st_size) == row["size"] as? Int64,
-        Int64(st.st_mtimespec.tv_sec) == row["modified_s"] as? Int64,
-        Int64(st.st_mtimespec.tv_nsec) == row["modified_ns"] as? Int64
+        liveCache || (Int64(st.st_size) == row["size"] as? Int64 &&
+        Int64(st.st_mtimespec.tv_sec) == row["modified_s"] as? Int64 &&
+        Int64(st.st_mtimespec.tv_nsec) == row["modified_ns"] as? Int64)
       else { throw MaintenanceCLI.failure("identity_changed") }
       try OperationJournal.intent(path, method: "remove_item")
       // Atomic rename isolates the object before unlink. Verify the renamed inode, restore on mismatch.
