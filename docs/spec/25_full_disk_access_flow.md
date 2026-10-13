@@ -40,3 +40,7 @@ Ngày cập nhật: 2026-10-13
 - 48 Rust,35 nhóm native,9 manager fixtures đạt; broker11 nhóm+typed deferral đạt; regression Lens cache/retention/history/selection/circle packing và frontend build đạt. Windows module cross-check đạt, chưa Windows app runtime.
 - Gói17 certificate-bound và codesign strict/deep đạt; FDA identity ad_hoc cũ phải gỡ/thêm lại một lần. User đã xác thực; Settings từ worker packaged app confirmed; Quick scan2.41GB kết quả, không quan sát prompt từng app. System Junk partial vẫn báo thật, không coi FDA là bảo đảm mọi root/quyền admin.
 - Build ký ổn định bằng script riêng `scripts/build_signed_macos.mjs`; config CI mặc định còn ad_hoc, chưa được claim giữ FDA cho public update. Bản local18 đang kiểm chứng retention qua binary/version mới; không dọn data user.
+
+## Nghiệm thu public update — 2026-10-13
+
+Public1.0.21 dùng cùng certificate-bound signer với local18. Hai native Mac build/package strict checks đạt; trên Apple Silicon updater18→21 download/install/restart đạt, About21 và Settings access_confirmed; không cấp lại FDA. Quick read-only scan sau update hoàn tất, partial báo thật. Intel GUI/FDA updateE2E chưa test. [Review và giới hạn](../qa_1_0_18_review.md).

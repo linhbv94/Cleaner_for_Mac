@@ -42,3 +42,7 @@ Chỉ gỡ trust certificate VXClean bằng `security remove-trusted-cert` với
 ## Cho phép phát hành ngày 2026-10-13
 
 User cho phép đưa signer local hiện có vào Actions Secrets riêng repo Cleaner_for_Mac. Đã lưu VXCLEAN_MACOS_CERTIFICATE và VXCLEAN_MACOS_CERTIFICATE_PASSWORD; dùng temporary runner keychain, trust chỉ codeSign và cleanup cuối job. Không đổi signer hoặc private key; không ảnh hưởng pipeline các app khác. CI dùng config overlay để giữ certificate-bound identity của local17–18. Cần kiểm chứng hai kiến trúc/gói tải thật trước publish; chưa claim updater FDA E2E.
+
+## Public1.0.21 đã kiểm chứng
+
+Hai gói Mac dùng đúng certificate fingerprint hiện có; strict/deep và DR đạt. Updater18→21 trên Apple Silicon đã tải/cài/restart, giữ FDA access_confirmed mà không cấp lại. CI trust admin chỉ codeSign trên VM dùng một lần; cleanup gỡ private keychain dù remove public trust bị timeout, trust public còn lại mất khi VM bị hủy. Không thay trust hệ thống máy user ở lượt release. [Bằng chứng](qa_1_0_18_review.md).
