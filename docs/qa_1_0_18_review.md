@@ -16,3 +16,7 @@ Ngày: 2026-10-13. Phạm vi: luồng Full Disk Access từ bản public1.0.16; 
 ## Ranh giới
 - Đây là QA native Apple Silicon; chưa Intel GUI, Windows hoặc auto-update download/install/restart. FDA17→18 theo log và panel18 hiện confirmed, chưa chứng minh qua updater public.
 - Public CI hiện ad-hoc khác signer local. User đã cho phép lưu signer local hiện có vào Secrets; đã lưu hai Secrets và chuẩn bị isolated keychain/config overlay/strict identity check/cleanup ở CI. Chưa publish, còn chờ CI/package verification.
+
+## Version phát hành
+
+Dùng1.0.19 để cao hơn bản local18 đã cài; chỉ đổi metadata version, không thay code ứng dụng sau QA. Native public19 và updater18→19 phải kiểm chứng riêng.
