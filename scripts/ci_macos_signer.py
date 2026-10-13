@@ -25,7 +25,11 @@ if sys.argv[1]=='install':
     p12.unlink();print('Expected certificate-bound signer installed in temporary keychain')
 elif sys.argv[1]=='cleanup':
     if (root/'identity.pem').exists():
-        subprocess.run(['sudo','-n','security','remove-trusted-cert','-d',str(root/'identity.pem')],capture_output=True,timeout=30)
+        try:
+            result=subprocess.run(['sudo','-n','security','remove-trusted-cert','-d',str(root/'identity.pem')],capture_output=True,timeout=30)
+            if result.returncode: print('Public certificate trust remains until hosted runner disposal',flush=True)
+        except subprocess.TimeoutExpired:
+            print('Trust removal timed out; continue deleting private keychain. Public trust expires with hosted runner disposal.',flush=True)
     if (root/'previous.json').exists():run('security','list-keychains','-d','user','-s',*json.loads((root/'previous.json').read_text()))
     if (root/'release.keychain-db').exists():run('security','delete-keychain',str(root/'release.keychain-db'))
     for path in root.glob('*'):path.unlink()
