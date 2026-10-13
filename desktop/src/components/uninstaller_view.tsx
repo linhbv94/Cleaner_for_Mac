@@ -1,3 +1,4 @@
+import {isScanAccessDeferred} from '../services/scan_access';
 import { defaultUninstallPaths } from '../services/uninstall_selection';
 import { useConfirmation } from './confirmation_dialog';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -47,7 +48,7 @@ export const UninstallerView: React.FC = () => {
         return visible.length > 0 ? visible[0].id : null;
       });
     } catch (e) {
-      if (isMountedRef.current && generation === loadGeneration.current) setResultMessage(errorText(e));
+      if (isMountedRef.current && generation === loadGeneration.current) setResultMessage(isScanAccessDeferred(e)?null:errorText(e));
     } finally {
       if (isMountedRef.current && generation === loadGeneration.current) setLoading(false);
     }

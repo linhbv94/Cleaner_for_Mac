@@ -1,3 +1,4 @@
+import {ScanAccessDialog} from './components/scan_access_dialog';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { TabId, Capabilities, SystemSnapshot } from './types';
 import {
@@ -214,6 +215,7 @@ export default function App() {
         </main>
       </div>
 
+      <ScanAccessDialog/>
       <SettingsModal
         updateFocusRequest={updateFocusRequest}
         isOpen={isSettingsOpen}

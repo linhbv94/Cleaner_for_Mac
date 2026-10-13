@@ -1,0 +1,22 @@
+import assert from 'node:assert/strict';import fs from 'node:fs';import {stripTypeScriptTypes} from 'node:module';
+const source=stripTypeScriptTypes(fs.readFileSync(new URL('../desktop/src/services/scan_access.ts',import.meta.url),'utf8'));
+const {ScanAccessCoordinator,ScanAccessDeferred,isScanAccessDeferred}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+const status=(kind)=>({platform:'macos',status:kind,evidence:'fixture',app_bundle_path:'/Applications/VXClean.app',signing_kind:'ad_hoc',version:'fixture'});
+const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
+let checks=0,scans=0;
+const granted=new ScanAccessCoordinator(async()=>{checks++;return status('access_confirmed');});await granted.ensure('quick');scans++;assert.equal(scans,1);assert.equal(granted.getSnapshot().requestedScopes.length,0);
+let kind='restricted';const broker=new ScanAccessCoordinator(async()=>status(kind));
+const first=broker.ensure('quick').then(()=>{scans++;return'ok'},()=> 'deferred');const second=broker.ensure('space_lens').then(()=>{scans++;return'ok'},()=> 'deferred');await tick();assert.deepEqual(new Set(broker.getSnapshot().requestedScopes),new Set(['quick','space_lens']));assert.equal(scans,1,'no scanner may start while access is restricted');
+broker.defer();assert.deepEqual(await Promise.all([first,second]),['deferred','deferred']);assert.equal(scans,1);
+const waiting=broker.ensure('uninstaller').then(()=>{scans++;});await tick();kind='unverified';await broker.refresh();assert.equal(broker.getSnapshot().requestedScopes.length,1);assert.equal(scans,1);
+kind='access_confirmed';await broker.refresh();await waiting;assert.equal(scans,2);assert.equal(broker.getSnapshot().requestedScopes.length,0);await broker.refresh();assert.equal(scans,2,'focus/recheck must not replay a scanner');
+kind='restricted';let cancelled=false;const aborted=broker.ensure('space_lens',()=>cancelled).then(()=> 'started',()=> 'cancelled');await tick();cancelled=true;kind='access_confirmed';await broker.refresh();assert.equal(await aborted,'cancelled');
+let reads=0;const earlyCancel=new ScanAccessCoordinator(async()=>{reads++;return status('access_confirmed')});await assert.rejects(earlyCancel.ensure('quick',()=>true));assert.equal(reads,0);
+const failed=new ScanAccessCoordinator(async()=>{throw new Error('probe timeout')});const blocked=failed.ensure('detailed').catch(()=>{});await tick();assert.equal(failed.getSnapshot().status.status,'unverified');assert.match(failed.getSnapshot().error,/timeout/);failed.defer();await blocked;
+const malformed=new ScanAccessCoordinator(async()=>status('granted'));assert.equal((await malformed.refresh()).status,'unverified');
+const otherOS=new ScanAccessCoordinator(async()=>status('not_required'));await otherOS.ensure('quick');assert.equal(otherOS.getSnapshot().requestedScopes.length,0);
+kind='restricted';await assert.rejects(broker.ensure('detailed',()=>false,false),/Quyền truy cập đã thay đổi/);assert.equal(broker.getSnapshot().requestedScopes.length,0,'internal rescan never leaves closed apps awaiting a modal');
+let resolveRead;let calls=0;const concurrent=new ScanAccessCoordinator(()=>{calls++;return new Promise(resolve=>{resolveRead=resolve})});const a=concurrent.refresh(),b=concurrent.refresh();await tick();assert.equal(calls,1);resolveRead(status('access_confirmed'));await Promise.all([a,b]);
+console.log('PASS: 11 FDA groups: verified/denied/unknown/error/malformed, shared dialog/probe, defer, cancellation, focus no replay, platform bypass, noninteractive lifecycle failure');
+
+assert.equal(isScanAccessDeferred(new ScanAccessDeferred()),true);assert.equal(isScanAccessDeferred(new Error('permission denied')),false);console.log('PASS: defer is typed user cancellation, real permission errors are not suppressed');

@@ -1,3 +1,4 @@
+import {isScanAccessDeferred} from '../services/scan_access';
 import { useAppQuitDialog } from './app_quit_dialog';
 import { useConfirmation } from './confirmation_dialog';
 import React, { useState, useEffect, useRef } from 'react';
@@ -137,7 +138,7 @@ export const CleanupView: React.FC<{ active?: boolean }> = ({ active = true }) =
       setSelectedPaths(paths);
     } catch (e) {
       if (isMountedRef.current && runId === scanGeneration.current) {
-        setError(bridge.errorText(e));
+        setError(isScanAccessDeferred(e)?null:bridge.errorText(e));
       }
     } finally {
       if (isMountedRef.current && runId === scanGeneration.current) {
@@ -238,7 +239,7 @@ export const CleanupView: React.FC<{ active?: boolean }> = ({ active = true }) =
         lifecycle = await bridge.prepareCleanupApps(data.scan_id, targets);
         if (lifecycle.status !== 'ready_for_rescan' && lifecycle.status !== 'not_needed') throw new Error('App chưa đóng (Save/Cancel/timeout). Không dọn các mục đã chọn.');
         scanRetention.invalidate();
-        cleanScan = await bridge.runDetailedScan();
+        cleanScan = await bridge.runDetailedScan(undefined,undefined,false);
         setData(cleanScan);
         const fresh = cleanScan.categories.flatMap(c => c.items);
         cleanTargets = targets.filter(t => fresh.some(i => i.path === t.path && i.deletion_method === t.deletion_method && i.is_cleanable !== false && !i.requires_app_quit));

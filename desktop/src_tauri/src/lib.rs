@@ -3,6 +3,7 @@ pub mod engine_bridge;
 pub mod models;
 pub mod maintenance_bridge;
 mod lens_scanner;
+mod scan_access;
 pub mod menubar;
 
 pub use engine_bridge::*;
@@ -109,7 +110,7 @@ pub fn run() {
             maintenance_bridge::clean_items, maintenance_bridge::get_installed_apps,
             maintenance_bridge::uninstall_app, maintenance_bridge::get_orphans,
             maintenance_bridge::trash_lens_item, maintenance_bridge::clean_orphans, maintenance_bridge::analyze_space_lens, maintenance_bridge::get_lens_folder,
-            maintenance_bridge::choose_scan_folder, maintenance_bridge::open_full_disk_access_settings,
+            maintenance_bridge::choose_scan_folder, maintenance_bridge::open_full_disk_access_settings, maintenance_bridge::get_scan_access_status,
             maintenance_bridge::reveal_in_file_manager, maintenance_bridge::open_in_terminal,
         ])
         .build(tauri::generate_context!())
@@ -142,5 +143,14 @@ pub fn run_lens_cli()->bool {
     match result{Ok(value)=>{let output=std::io::BufWriter::new(std::io::stdout());
         let mut encoder=flate2::write::GzEncoder::new(output,flate2::Compression::fast());
         if serde_json::to_writer(&mut encoder,&value).is_err() || encoder.finish().is_err(){std::process::exit(1)}},Err(error)=>{eprintln!("{}",error);std::process::exit(1)}}
+    true
+}
+
+/// Read-only access worker runs before any UI/service initialization.
+pub fn run_access_cli()->bool{
+    let args:Vec<_>=std::env::args().skip(1).collect();
+    if args.first().is_none_or(|arg|arg!="--access-probe"){return false}
+    if args.len()!=1{std::process::exit(2)}
+    if serde_json::to_writer(std::io::stdout(),&scan_access::status()).is_err(){std::process::exit(1)}
     true
 }

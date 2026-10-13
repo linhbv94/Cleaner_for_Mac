@@ -25,6 +25,7 @@ JS invoke argument keys theo Tauri camelCase; JSON payload bên trong snake_case
 | trash_lens_item | lensId, path; grant riêng, Trash |
 | choose_scan_folder | Không args; path hoặc null |
 | reveal_in_file_manager, open_in_terminal | path |
+| get_scan_access_status | worker cùng app, timeout4s; protected-read probe, không đọc TCC contents; status access_confirmed/restricted/unverified/not_required + bundle path/signing diagnostics |
 | open_full_disk_access_settings | Không args; mở System Settings, không tự cấp quyền |
 
 Clipboard qua JS API, không command copy_to_clipboard. Không gọi execute_clean/trash_space_lens_items từ spec cũ.
@@ -85,3 +86,7 @@ Scanner Rust dùng chung Mac/Windows. Response thêm `children_complete`, `is_pa
 Không cắt cây theo số node hoặc độ sâu. Host giữ metadata phẳng đầy đủ đọc được5 phút từ hoàn tất; query không gia hạn TTL. Root system không quét; Windows reparse points không duyệt. Quét lỗi/timeout không cấp snapshot thành công. Worker → host dùng gzip/deserialize typed; UI chỉ nhận folder đang xem, không nhận toàn cây. Giới hạn32MiB compressed output và timeout120s được giữ làm lỗi có báo, không cắt cây rồi âm thầm quét lại.
 
 - `get_lens_folder` trả `scan_root_path` gốc và `lens_id` gốc; metadata query không trở thành deletion grant. Host giữ tối đa2 cây, tự giải phóng khi hết5 phút; mutation xóa navigation snapshots. FE giữ tối đa16 folder DTO làm cache hiển thị.
+
+### Scan access preflight
+
+Trước các read scan thật, bridge gọi coordinator dùng chung theo [spec25](25_full_disk_access_flow.md). Query Lens snapshot và metrics không yêu cầu FDA. `access_confirmed` là evidence truy cập probe, không là deletion grant/boolean TCC chính thức. Cancel/Để sau là `ScanAccessDeferred`, không gán lỗi native; lỗi native thật giữ nguyên. Rescan nội bộ lifecycle dùng noninteractive preflight, thiếu quyền throw để finally phục hồi app.

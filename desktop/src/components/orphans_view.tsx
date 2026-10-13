@@ -1,3 +1,4 @@
+import {isScanAccessDeferred} from '../services/scan_access';
 import { useConfirmation } from './confirmation_dialog';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
@@ -39,7 +40,7 @@ export const OrphansView: React.FC = () => {
       setOrphans(res.orphans);
       setSelectedPaths(new Set());
     } catch (e) {
-      if (mounted.current && generation === loadGeneration.current) setResultMessage(errorText(e));
+      if (mounted.current && generation === loadGeneration.current) setResultMessage(isScanAccessDeferred(e)?null:errorText(e));
     } finally {
       if (mounted.current && generation === loadGeneration.current) setLoading(false);
     }

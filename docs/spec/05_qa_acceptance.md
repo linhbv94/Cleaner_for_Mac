@@ -109,3 +109,11 @@ Dùng fixture user data tự tạo/temporary home, không dọn máy thật. Nat
 Báo cáo lưu artifact/version/hash/OS/architecture, pass/fail/untested từng gate và remaining disabled branches. OS/application/layout chưa test → support hạn chế, không copy mutation rule sang Windows. Nếu Chrome restore hoặc adapter chưa đạt, ghi rõ blocker và giữ mutation blocked; không âm thầm hạ yêu cầu thành launch-only.
 
 Chuẩn bị release không đồng nghĩa được publish. Không ghi all-ready khi P1 policy/data loss hoặc partial reporting còn fail; không công bố auto-update/signing/Win QA khi chưa làm task đó.
+
+## FDA preflight regression
+
+- Restricted/unknown/probe failed: không bắt đầu scanner; nhiều yêu cầu dùng1dialog. Cancel/ESC đóng sạch, không hiện banner lỗi quét.
+- Confirmed/not-required: gọi luồng cũ đúng1lần; recheck/focus không replay. Cancel/stale generation sau grant không scan.
+- Revoked trong rescan app-quit flow: lỗi noninteractive, finally restore không treo chờ quyền. Permission thật không bị lọc như cancellation.
+- Metadata Lens navigation không chạy access probe/scanner; OS-denied/partial không đồng nhất với FDA.
+- Grant FDA thật trong Settings và persistence qua2bản signed cùng identity cần evidence riêng; tests/bool/localStorage không thay.

@@ -1,3 +1,4 @@
+import { ScanAccessCoordinator, ScanAccessStatus } from './scan_access';
 import { retainedRead, invalidatingMutation } from './scan_retention';
 import {
   Capabilities,
@@ -33,6 +34,12 @@ export const isTauriEnvironment = (): boolean => {
     Boolean((window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__)
   );
 };
+
+export async function readScanAccessStatus():Promise<ScanAccessStatus>{
+  if(!isTauriEnvironment())return {platform:'browser',status:'not_required',evidence:'preview',app_bundle_path:null,signing_kind:'not_applicable',version:''};
+  const {invoke}=await import('@tauri-apps/api/core');return invoke<ScanAccessStatus>('get_scan_access_status');
+}
+export const scanAccess=new ScanAccessCoordinator(readScanAccessStatus);
 
 export async function fetchCapabilities(): Promise<Capabilities> {
   if (!isTauriEnvironment()) {
@@ -70,15 +77,18 @@ export async function fetchSystemSnapshot(): Promise<SystemSnapshot> {
 
 export async function runSmartScan(
   onProgress?: (event: ScanProgressEvent) => void,
-  shouldCancel?: () => boolean
+  shouldCancel?: () => boolean,
+  interactiveAccess = true
 ): Promise<ScanResponse> {
+  await scanAccess.ensure('quick',shouldCancel,interactiveAccess);
   return retainedRead('smart_scan', async () => {
     if (!isTauriEnvironment()) { const preview = await mockScan(onProgress, shouldCancel); preview.categories = preview.categories.filter(c => ['system_junk', 'user_caches', 'large_files'].includes(c.category)); preview.total_cleanable_bytes = preview.categories.reduce((n,c) => n+c.total_bytes,0); return preview; }
     return nativeProgress<ScanResponse, ScanProgressEvent>('start_scan', {}, 'scan_progress', onProgress, shouldCancel);
   });
 }
 
-export async function runDetailedScan(onProgress?: (event: ScanProgressEvent) => void, shouldCancel?: () => boolean): Promise<ScanResponse> {
+export async function runDetailedScan(onProgress?: (event: ScanProgressEvent) => void, shouldCancel?: () => boolean, interactiveAccess=true): Promise<ScanResponse> {
+  await scanAccess.ensure('detailed',shouldCancel,interactiveAccess);
   return retainedRead('cleanup', async () => {
     if (!isTauriEnvironment()) {
       const result = await mockScan(onProgress, shouldCancel);
@@ -120,6 +130,7 @@ export async function runClean(payload: CleanPayload, onProgress?: (event: Clean
 }
 
 export async function fetchInstalledApps(): Promise<AppsListResponse> {
+  await scanAccess.ensure('uninstaller');
   return retainedRead('uninstaller', async () => {
     if (!isTauriEnvironment()) return mockGetInstalledApps();
     const { invoke } = await import('@tauri-apps/api/core');
@@ -134,6 +145,7 @@ export async function runUninstallApp(payload: UninstallPayload): Promise<CleanR
   });
 }
 export async function runAnalyzeSpaceLens(path: string, onProgress?: (event: LensProgressEvent) => void, shouldCancel?: () => boolean): Promise<SpaceLensResponse> {
+  await scanAccess.ensure('space_lens',shouldCancel);
   return retainedRead('space_lens', async () => {
     if (!isTauriEnvironment()) {
       const result = await mockAnalyzeSpaceLens(path);
@@ -167,6 +179,7 @@ export async function trashLensItem(lensId: string, path: string): Promise<Clean
   });
 }
 export async function fetchOrphans(): Promise<OrphansResponse> {
+  await scanAccess.ensure('orphans');
   return retainedRead('orphans', async () => {
     if (!isTauriEnvironment()) return mockGetOrphans();
     const { invoke } = await import('@tauri-apps/api/core');

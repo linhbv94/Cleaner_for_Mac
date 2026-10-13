@@ -43,3 +43,7 @@ Ngoại lệ content manifest chỉ cho `chrome_quick_cache` trong Library/Cache
 ### Live Quick tiếp theo — 2026-10-11
 
 Codex frontend cache trong Library/Caches dùng cùng cơ chế cache đang mở như Chrome. Loại riêng wifi.log đang ghi ở /var/log và alias /private/var/log khỏi scan/cleanup Quick theo chỉ đạo user; log xoay vòng giữ nguyên. System Junk còn lại giữ identity/content guard hiện tại. Các rule khác giữ snapshot strict; xem [spec24](24_single_admin_pass_quick_live_cache.md).
+
+## Quyền đọc dữ liệu — hiện hành local1.0.17
+
+[Luồng Full Disk Access dùng chung](25_full_disk_access_flow.md) kiểm tra trước read scan, hướng dẫn trong dialog/Settings, kiểm tra lại khi trở về app; không thay cleanup policy. Nền tảng không dùng FDA bỏ qua flow này. Ký ad_hoc không chứng minh quyền giữ qua cập nhật; phải có signer ổn định và test migration/update thật trước khi ghi nhận DoD đó.

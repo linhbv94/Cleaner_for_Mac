@@ -1,6 +1,6 @@
 {
   "name": "vxclean",
-  "version": "1.0.16",
+  "version": "1.0.18",
   "description": "VXClean — Desktop System Monitor & Maintenance Bridge",
   "type": "module",
   "scripts": {
