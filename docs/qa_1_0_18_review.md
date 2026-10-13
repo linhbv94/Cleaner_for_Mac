@@ -20,3 +20,5 @@ Ngày: 2026-10-13. Phạm vi: luồng Full Disk Access từ bản public1.0.16; 
 ## Version phát hành
 
 Dùng1.0.19 để cao hơn bản local18 đã cài; chỉ đổi metadata version, không thay code ứng dụng sau QA. Native public19 và updater18→19 phải kiểm chứng riêng.
+
+- Release19 chưa publish: đã sửa Secret PKCS12 thành định dạng Apple import đã kiểm chứng; bước user trust trên hosted runner chờ authorization. Release20 dùng sudo noninteractive/trust admin chỉ codeSign trên runner dùng một lần, timeout30s/command và cleanup. App code không đổi; tag19 giữ bất biến.
