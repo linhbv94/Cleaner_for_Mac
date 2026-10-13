@@ -84,6 +84,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+      - name: Install stable macOS signing identity
+        env:
+          VXCLEAN_MACOS_CERTIFICATE: ${{ secrets.VXCLEAN_MACOS_CERTIFICATE }}
+          VXCLEAN_MACOS_CERTIFICATE_PASSWORD: ${{ secrets.VXCLEAN_MACOS_CERTIFICATE_PASSWORD }}
+        run: python3 scripts/ci_macos_signer.py install
       - name: Install frontend dependencies
         run: npm ci --ignore-scripts
         working-directory: desktop
@@ -104,11 +109,6 @@ jobs:
           node scripts/test_circle_packing.cjs
       - name: Test release automation
         run: node --test scripts/test_release_automation.mjs
-      - name: Install stable macOS signing identity
-        env:
-          VXCLEAN_MACOS_CERTIFICATE: ${{ secrets.VXCLEAN_MACOS_CERTIFICATE }}
-          VXCLEAN_MACOS_CERTIFICATE_PASSWORD: ${{ secrets.VXCLEAN_MACOS_CERTIFICATE_PASSWORD }}
-        run: python3 scripts/ci_macos_signer.py install
       - name: Build and upload signed updater packages
         uses: tauri-apps/tauri-action@v1
         env:
