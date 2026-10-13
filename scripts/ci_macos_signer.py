@@ -3,7 +3,8 @@ import base64,json,os,secrets,subprocess,sys
 from pathlib import Path
 root=Path(os.environ['RUNNER_TEMP'])/'vxclean_signer'
 def run(*args):
-    result=subprocess.run(args,capture_output=True,text=True)
+    print("Signer step: "+args[0]+" "+args[1],flush=True)
+    result=subprocess.run(args,capture_output=True,text=True,timeout=30)
     if result.returncode: raise RuntimeError('macOS signer command failed: '+args[0]+' '+args[1])
     return result.stdout
 if sys.argv[1]=='install':
@@ -16,14 +17,15 @@ if sys.argv[1]=='install':
     run('security','set-key-partition-list','-S','apple-tool:,apple:,codesign:','-s','-k',password,str(keychain))
     run('security','list-keychains','-d','user','-s',str(keychain),*json.loads((root/'previous.json').read_text()))
     cert.write_text(run('security','find-certificate','-a','-p',str(keychain)))
-    run('security','add-trusted-cert','-r','trustRoot','-p','codeSign','-k',str(keychain),str(cert))
+    run('sudo','-n','security','add-trusted-cert','-d','-r','trustRoot','-p','codeSign','-k',str(keychain),str(cert))
     identity='FE024021592C718A39AD70B76D2EDC5DA0CD6B70'
     if identity not in run('security','find-identity','-v','-p','codesigning',str(keychain)):raise RuntimeError('Expected signer is not trusted/available')
     (root/'tauri_signer.json').write_text(json.dumps({'bundle':{'macOS':{'signingIdentity':identity}}}))
     with open(os.environ['GITHUB_ENV'],'a') as stream:stream.write('VXCLEAN_SIGNER_CONFIG='+str(root/'tauri_signer.json')+'\n')
     p12.unlink();print('Expected certificate-bound signer installed in temporary keychain')
 elif sys.argv[1]=='cleanup':
-    if (root/'identity.pem').exists():run('security','remove-trusted-cert',str(root/'identity.pem'))
+    if (root/'identity.pem').exists():
+        subprocess.run(['sudo','-n','security','remove-trusted-cert','-d',str(root/'identity.pem')],capture_output=True,timeout=30)
     if (root/'previous.json').exists():run('security','list-keychains','-d','user','-s',*json.loads((root/'previous.json').read_text()))
     if (root/'release.keychain-db').exists():run('security','delete-keychain',str(root/'release.keychain-db'))
     for path in root.glob('*'):path.unlink()

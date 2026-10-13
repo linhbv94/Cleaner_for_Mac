@@ -1,6 +1,6 @@
 [package]
 name = "vxclean"
-version = "1.0.19"
+version = "1.0.20"
 description = "VXClean — Desktop System Monitor & Maintenance Bridge"
 authors = ["vic"]
 edition = "2021"
