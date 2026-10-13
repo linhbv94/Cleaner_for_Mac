@@ -1,3 +1,4 @@
+import {isScanAccessDeferred} from '../services/scan_access';
 import { useConfirmation } from './confirmation_dialog';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
@@ -184,7 +185,7 @@ export const SpaceLensView: React.FC = () => {
       setIsPartial(partialCheck);
     } catch (e) {
       if (runId !== generation.current || isCancelledRef.current) return;
-      setActionMessage(bridge.errorText(e));
+      setActionMessage(isScanAccessDeferred(e)?null:bridge.errorText(e));
     } finally {
       if (runId === generation.current) {
         setLoading(false);
@@ -437,7 +438,7 @@ export const SpaceLensView: React.FC = () => {
           <div className="flex items-center gap-2">
             <AlertTriangle size={14} className="text-amber-500 dark:text-amber-400 shrink-0" />
             <span>
-              Phát hiện thư mục con bị từ chối truy cập do thiếu quyền Full Disk Access.
+              Một số thư mục không đọc được. Kiểm tra quyền truy cập hoặc quét lại.
             </span>
           </div>
           <div className="flex items-center gap-2">

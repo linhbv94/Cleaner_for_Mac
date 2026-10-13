@@ -1,3 +1,4 @@
+import {isScanAccessDeferred} from '../services/scan_access';
 import { useAppQuitDialog } from './app_quit_dialog';
 import { useConfirmation } from './confirmation_dialog';
 import { scanRetention } from '../services/scan_retention';
@@ -106,7 +107,7 @@ export const SmartScanView: React.FC<SmartScanViewProps> = ({
       setState('results');
     } catch (e) {
       if (runId !== generation.current) return;
-      if (!isCancelledRef.current) setError(errorText(e));
+      if (!isCancelledRef.current && !isScanAccessDeferred(e)) setError(errorText(e));
       setState('idle');
     }
   };
@@ -235,7 +236,7 @@ export const SmartScanView: React.FC<SmartScanViewProps> = ({
           lifecycle = await prepareCleanupApps(scanResult.scan_id, targets);
           if (!['ready_for_rescan', 'not_needed'].includes(lifecycle.status)) throw new Error('App chưa đóng hoặc đã hủy. Chưa dọn các mục đã chọn.');
           scanRetention.invalidate();
-          cleanScan = await runSmartScan();
+          cleanScan = await runSmartScan(undefined,undefined,false);
           setScanResult(cleanScan);
           const fresh = cleanScan.categories.flatMap(category => category.items);
           cleanTargets = targets.filter(target => fresh.some(item => item.path === target.path && item.deletion_method === target.deletion_method && item.is_cleanable !== false && !item.requires_app_quit));

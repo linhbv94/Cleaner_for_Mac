@@ -303,7 +303,8 @@ async fn execute(app:AppHandle,args:Vec<String>,payload:Option<Value>,operation_
 }
 async fn execute_as<T:serde::de::DeserializeOwned+Send+'static>(app: AppHandle, args: Vec<String>, payload: Option<Value>, operation_id: String, cancel: Arc<AtomicBool>) -> Result<T, String> {
     let rust_lens=args.first().is_some_and(|arg|arg=="--lens-scan");
-    let engine = if rust_lens {std::env::current_exe().map_err(|e|e.to_string())?}else{resolve_engine_path(&app)?};
+    let access_probe=args.first().is_some_and(|arg|arg=="--access-probe");
+    let engine = if rust_lens || access_probe {std::env::current_exe().map_err(|e|e.to_string())?}else{resolve_engine_path(&app)?};
     let shutting_down=app.state::<EngineState>().shutting_down.clone();
     let active=app.state::<EngineState>().active_children.clone();
     let mutating=payload.is_some();
@@ -337,7 +338,7 @@ async fn execute_as<T:serde::de::DeserializeOwned+Send+'static>(app: AppHandle, 
         let start = Instant::now(); let mut failure = None; let mut shutdown_since=None;
         let status = loop {
             if shutting_down.load(Ordering::SeqCst) && shutdown_since.is_none() { shutdown_since=Some(Instant::now()); }
-            if cancel.load(Ordering::Relaxed) || start.elapsed() > Duration::from_secs(if mutating {600} else {120}) || shutdown_since.is_some_and(|t| !mutating || t.elapsed()>Duration::from_secs(8)) {
+            if cancel.load(Ordering::Relaxed) || start.elapsed() > Duration::from_secs(if mutating {600} else if access_probe {4} else {120}) || shutdown_since.is_some_and(|t| !mutating || t.elapsed()>Duration::from_secs(8)) {
                 failure = Some(if cancel.load(Ordering::Relaxed) { "Đã hủy thao tác" } else { "Engine quá thời gian chờ" }.to_string());
                 kill_owned_group(&mut child); break child.wait().map_err(|e| e.to_string());
             }
@@ -541,6 +542,12 @@ pub async fn choose_scan_folder(app: AppHandle) -> Result<Option<String>, String
     }
     #[cfg(not(any(target_os = "macos",target_os = "windows")))]
     { let _ = app; Err("Folder picker của maintenance hiện chỉ hỗ trợ macOS".into()) }
+}
+#[tauri::command]
+pub async fn get_scan_access_status(window:tauri::WebviewWindow,app:AppHandle)->Result<Value,String>{
+    main_only(&window)?;
+    #[cfg(target_os="macos")]{Ok(execute(app,vec!["--access-probe".into()],None,unique_ticket("access"),Arc::new(AtomicBool::new(false))).await.unwrap_or_else(crate::scan_access::unverified_status))}
+    #[cfg(not(target_os="macos"))]{let _=app;Ok(crate::scan_access::status())}
 }
 #[tauri::command]
 pub fn open_full_disk_access_settings() -> Result<(), String> {

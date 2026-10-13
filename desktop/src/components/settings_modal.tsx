@@ -1,3 +1,4 @@
+import {ScanAccessPanel} from './scan_access_dialog';
 import { OperationHistory } from './operation_history';
 import { UpdatePanel } from './update_panel';
 import React, { useState, useEffect } from 'react';
@@ -271,26 +272,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             )}
 
             {/* TAB 2: SYSTEM */}
-            {activeTab === 'system' && (
-              <div className="space-y-4">
-                <h4 className="text-xs uppercase tracking-wider font-semibold text-cyan-700 dark:text-cyan-400 mb-2">
-                  TRẠNG THÁI KẾT NỐI HỆ THỐNG
-                </h4>
-                <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/40 border border-slate-200/80 dark:border-white/5 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium text-slate-800 dark:text-slate-200">Native Swift Engine Bridge</span>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-cyan-100 dark:bg-cyan-500/20 text-cyan-800 dark:text-cyan-300 border border-cyan-300 dark:border-cyan-500/30">
-                      macOS Native
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                    Kết nối trực tiếp qua Rust FFI và Swift Daemon để đọc thông số bộ nhớ, CPU, và phân tích dung lượng đĩa không tiêu tốn tài nguyên.
-                  </p>
-                </div>
-              </div>
-            )}
+            {activeTab === 'system' && <div className="space-y-4"><h4 className="text-xs uppercase tracking-wider font-semibold text-cyan-700 dark:text-cyan-400">QUYỀN TRUY CẬP DỮ LIỆU</h4><ScanAccessPanel/></div>}
 
-            {/* TAB 3: UPDATES */}
             {activeTab === 'updates' && (
               <div className="space-y-4 animate-in fade-in duration-200">
                 <div className="p-4 rounded-2xl bg-gradient-to-r from-cyan-500/10 via-cyan-500/5 to-transparent border border-cyan-500/20">
