@@ -323,13 +323,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       </span>
                       <span className="text-slate-300 dark:text-slate-600">•</span>
                       <a
-                        href="https://github.com/linhbv94/Cleaner_for_Mac"
+                        href="https://github.com/linhbv94/VXClean"
                         target="_blank"
                         rel="noreferrer"
                         className="inline-flex items-center gap-1 text-cyan-600 dark:text-cyan-400 hover:underline font-mono text-[11px]"
                       >
                         <ExternalLink className="w-3 h-3" />
-                        <span>github.com/linhbv94/Cleaner_for_Mac</span>
+                        <span>github.com/linhbv94/VXClean</span>
                       </a>
                     </div>
                   </div>

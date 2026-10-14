@@ -109,6 +109,8 @@ jobs:
           node scripts/test_circle_packing.cjs
       - name: Test release automation
         run: node --test scripts/test_release_automation.mjs
+      - name: Recent opening regression
+        run: node --test scripts/test_recent.mjs
       - name: Build and upload signed updater packages
         uses: tauri-apps/tauri-action@v1
         env:

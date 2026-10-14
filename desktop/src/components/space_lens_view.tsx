@@ -26,6 +26,8 @@ import { formatBytes } from '../services/mock_engine';
 import { packCircles } from './circle_packing';
 import { FolderScanCache } from '../services/folder_scan_cache';
 import { scanRetention } from '../services/scan_retention';
+import { RecentButton } from './recent_button';
+import { addRecentItem } from '../services/recent_service';
 import { PageHeader } from './page_header';
 
 interface ContextMenuState {
@@ -127,14 +129,14 @@ export const SpaceLensView: React.FC = () => {
       if (revision !== scanRetention.revision) {revision = scanRetention.revision; folderCache.current.clear(); navigationTicket.current='';}
     });
   }, []);
-  const analyzePath = async (target: string, force = false) => {
+  const analyzePath = async (target: string, force = false): Promise<boolean> => {
     if (force) {folderCache.current.clear();navigationTicket.current='';}
     const revision = scanRetention.revision;
     const queryGeneration=++generation.current;
     let cached:SpaceLensResponse|undefined;
     try {cached=await folderCache.current.resolve(target,revision,navigationTicket.current,bridge.fetchLensFolder);}
-    catch(error){if(queryGeneration===generation.current)setActionMessage(bridge.errorText(error));return;}
-    if(queryGeneration!==generation.current || revision!==scanRetention.revision)return;
+    catch(error){if(queryGeneration===generation.current)setActionMessage(bridge.errorText(error));return false;}
+    if(queryGeneration!==generation.current || revision!==scanRetention.revision)return false;
     if (cached) {
       generation.current++; isCancelledRef.current = true;
       setCurrentPath(cached.root_path); setCurrentNode(cached.root_node);
@@ -142,7 +144,7 @@ export const SpaceLensView: React.FC = () => {
       setLensId(cached.lens_id ?? 'mock_lens'); setHistory([cached.root_node]);
       setSelectedNode(null); setLoading(false); setScanProgress(null);setActionMessage(null);
       setIsPartial(Boolean(cached.is_partial) || Boolean(cached.root_node.children?.some(c=>c.is_access_denied)));
-      setContextMenu(prev=>({...prev,visible:false})); return;
+      setContextMenu(prev=>({...prev,visible:false})); return true;
     }
     const runId = ++generation.current;
     isCancelledRef.current = false;
@@ -167,9 +169,9 @@ export const SpaceLensView: React.FC = () => {
         () => runId !== generation.current || isCancelledRef.current
       );
 
-      if (runId !== generation.current || isCancelledRef.current) return;
+      if (runId !== generation.current || isCancelledRef.current) return false;
 
-      if (revision !== scanRetention.revision) {setActionMessage('Dữ liệu đã thay đổi; hãy quét lại folder.');return;}
+      if (revision !== scanRetention.revision) {setActionMessage('Dữ liệu đã thay đổi; hãy quét lại folder.');return false;}
       folderCache.current.put([target,res.root_path],res,revision);
       proofRoot.current=res.scan_root_path??res.root_path;navigationTicket.current=res.lens_id??'';
       setLensId(res.lens_id ?? 'mock_lens');
@@ -183,9 +185,11 @@ export const SpaceLensView: React.FC = () => {
         Boolean(res.is_partial) ||
         Boolean(res.root_node.children?.some((c) => c.is_access_denied));
       setIsPartial(partialCheck);
+      return true;
     } catch (e) {
-      if (runId !== generation.current || isCancelledRef.current) return;
+      if (runId !== generation.current || isCancelledRef.current) return false;
       setActionMessage(isScanAccessDeferred(e)?null:bridge.errorText(e));
+      return false;
     } finally {
       if (runId === generation.current) {
         setLoading(false);
@@ -211,17 +215,17 @@ export const SpaceLensView: React.FC = () => {
     setActionMessage('Đã hủy quét phân tích dung lượng.');
   };
 
+  const openRecentRoot = async (path: string) => {
+    if (loading || isTrashing || !isMountedRef.current) return;
+    if (await analyzePath(path, true)) addRecentItem('vxclean_recent_lens_folders', path);
+  };
   const handlePickFolder = async () => {
+    if (loading || isTrashing) return;
     try {
       const picked = await bridge.chooseScanFolder();
-      if (!isMountedRef.current) return;
-      if (picked) {
-        setCurrentPath(picked);
-        void analyzePath(picked,true);
-      }
-    } catch (e) {
-      setActionMessage(bridge.errorText(e));
-    }
+      if (!isMountedRef.current || !picked) return;
+      await openRecentRoot(picked);
+    } catch (error) { setActionMessage(bridge.errorText(error)); }
   };
 
   const handleOpenFDA = async () => {
@@ -369,15 +373,12 @@ export const SpaceLensView: React.FC = () => {
       <div className="px-4 py-2 border-b border-slate-200 dark:border-slate-800/80 bg-slate-100/60 dark:bg-[#121622]/60 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
           {/* Native Folder Picker Button & Typed Path */}
-          <button
-            type="button"
-            onClick={handlePickFolder}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-cyan-500/30 hover:border-cyan-500/60 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 transition-colors cursor-pointer"
-            title="Chọn thư mục qua hộp thoại hệ điều hành"
-          >
-            <FolderOpen size={13} className="text-cyan-600 dark:text-cyan-400" />
-            <span>Chọn thư mục...</span>
-          </button>
+          <RecentButton type="folder" storageKey="vxclean_recent_lens_folders"
+            label="Chọn thư mục..." title="Chọn thư mục qua hộp thoại hệ điều hành"
+            icon={<FolderOpen size={13} className="text-cyan-600 dark:text-cyan-400" />}
+            disabled={loading || isTrashing} onMainClick={handlePickFolder} onSelectRecent={openRecentRoot}
+            buttonClassName="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-cyan-500/30 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+            emptyLabel="Chưa có thư mục gần đây" />
 
           <input
             aria-label="Thư mục cần phân tích"
