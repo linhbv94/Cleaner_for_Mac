@@ -43,6 +43,6 @@ export function UpdatePanel() {
       {update && !installed && <button disabled={busy} onClick={() => void install()} className="rounded-lg border px-3 py-2 disabled:opacity-50">Tải và cài {update.version}</button>}
       {installed && <button onClick={() => void invoke('restart_after_update').catch(error => setStatus(String(error)))} className="rounded-lg bg-cyan-600 text-white px-3 py-2">Khởi động lại VXClean</button>}
     </div>
-    <a href="https://github.com/linhbv94/Cleaner_for_Mac/releases" target="_blank" rel="noreferrer" className="underline">Xem các bản phát hành trên GitHub</a>
+    <a href="https://github.com/linhbv94/VXClean/releases" target="_blank" rel="noreferrer" className="underline">Xem các bản phát hành trên GitHub</a>
   </section>;
 }
